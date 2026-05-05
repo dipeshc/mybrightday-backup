@@ -1,0 +1,103 @@
+name: Build and Release
+
+on: push
+
+permissions:
+  contents: write
+
+jobs:
+  version:
+    name: Generate Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Generate version
+        id: version
+        shell: bash
+        run: echo "value=1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
+    needs: version
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+            artifact: daycare-photos-darwin-arm64.tar.gz
+          - goos: darwin
+            goarch: amd64
+            artifact: daycare-photos-darwin-amd64.tar.gz
+          - goos: linux
+            goarch: amd64
+            artifact: daycare-photos-linux-amd64.tar.gz
+          - goos: windows
+            goarch: amd64
+            artifact: daycare-photos-windows-amd64.zip
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          VERSION: ${{ needs.version.outputs.version }}
+        shell: bash
+        run: |
+          mkdir -p build dist
+          BINARY=daycare-photos
+          if [ "${{ matrix.goos }}" = "windows" ]; then
+            BINARY=daycare-photos.exe
+          fi
+          go build -ldflags "-X github.com/dipesh/daycare-photos/internal/app.Version=${VERSION}" \
+            -o build/${BINARY} ./cmd/daycare-photos
+          if [[ "${{ matrix.artifact }}" == *.zip ]]; then
+            cd build && zip ../dist/${{ matrix.artifact }} ${BINARY}
+          else
+            tar -czf dist/${{ matrix.artifact }} -C build ${BINARY}
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/
+
+  release:
+    name: Create Release
+    if: github.ref == 'refs/heads/main'
+    needs: [version, build]
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: binary-*
+          merge-multiple: true
+          path: artifacts/
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.version }}
+          body: ${{ github.event.head_commit.message }}
+          files: artifacts/*
