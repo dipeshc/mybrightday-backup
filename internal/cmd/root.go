@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"strings"
 
 	"github.com/dipesh/daycare-photos/internal/cmd/init"
 	"github.com/dipesh/daycare-photos/internal/cmd/run"
@@ -21,7 +22,16 @@ func (h *plainHandler) Enabled(_ context.Context, l slog.Level) bool { return l 
 func (h *plainHandler) WithAttrs(_ []slog.Attr) slog.Handler         { return h }
 func (h *plainHandler) WithGroup(_ string) slog.Handler              { return h }
 func (h *plainHandler) Handle(_ context.Context, r slog.Record) error {
-	fmt.Fprintln(h.w, r.Message)
+	var b strings.Builder
+	b.WriteString(r.Message)
+	r.Attrs(func(a slog.Attr) bool {
+		b.WriteByte(' ')
+		b.WriteString(a.Key)
+		b.WriteByte('=')
+		fmt.Fprintf(&b, "%v", a.Value.Any())
+		return true
+	})
+	fmt.Fprintln(h.w, b.String())
 	return nil
 }
 
