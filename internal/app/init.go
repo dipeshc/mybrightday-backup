@@ -8,20 +8,44 @@ import (
 	"log/slog"
 	"os"
 	"strings"
+	"syscall"
+
+	"golang.org/x/term"
 )
 
 // RunInit sets up credentials for the application.
 func RunInit(ctx context.Context, googlePhotos bool, cfg *InitConfig) error {
 	if cfg.MyBrightDay.SessionCookieSecret == "" {
-		fmt.Print("Enter your MyBrightDay session cookie (from browser DevTools): ")
-		reader := bufio.NewReader(os.Stdin)
-		cookie, err := reader.ReadString('\n')
-		if err != nil {
-			return fmt.Errorf("reading input: %w", err)
+		email := cfg.MyBrightDay.Email
+		if email == "" {
+			fmt.Print("Enter your MyBrightDay email: ")
+			reader := bufio.NewReader(os.Stdin)
+			val, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("reading email: %w", err)
+			}
+			email = strings.TrimSpace(val)
 		}
-		cookie = strings.TrimSpace(cookie)
-		if cookie == "" {
-			return fmt.Errorf("session cookie cannot be empty")
+
+		password := cfg.MyBrightDay.Password
+		if password == "" {
+			fmt.Print("Enter your MyBrightDay password: ")
+			bytePassword, err := term.ReadPassword(int(syscall.Stdin))
+			if err != nil {
+				return fmt.Errorf("reading password: %w", err)
+			}
+			fmt.Println()
+			password = strings.TrimSpace(string(bytePassword))
+		}
+
+		if email == "" || password == "" {
+			return fmt.Errorf("email and password cannot be empty")
+		}
+
+		slog.Info("Authenticating with MyBrightDay...", "email", email)
+		cookie, err := AuthenticateMyBrightDay(ctx, email, password)
+		if err != nil {
+			return fmt.Errorf("mybrightday authentication: %w", err)
 		}
 
 		if err := os.WriteFile("mybrightday_session_cookie_secret", []byte(cookie), 0600); err != nil {

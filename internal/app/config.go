@@ -21,6 +21,10 @@ type LoggingConfig struct {
 type MyBrightDayConfig struct {
 	// SessionCookieSecret is the authenticated session cookie.
 	SessionCookieSecret string `yaml:"session_cookie_secret" desc:"MyBrightDay session cookie"`
+	// Email is the user's email for authentication.
+	Email string `yaml:"email" desc:"MyBrightDay email"`
+	// Password is the user's password for authentication.
+	Password string `yaml:"password" desc:"MyBrightDay password"`
 	// BaseURL is the API base URL (default: https://mybrightday.brighthorizons.com).
 	BaseURL string `yaml:"base_url" desc:"MyBrightDay API base URL"`
 }
