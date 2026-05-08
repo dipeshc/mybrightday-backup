@@ -19,8 +19,6 @@ type LoggingConfig struct {
 
 // MyBrightDayConfig holds connection settings for the MyBrightDay API.
 type MyBrightDayConfig struct {
-	// SessionCookieSecret is the authenticated session cookie.
-	SessionCookieSecret string `yaml:"session_cookie_secret" desc:"MyBrightDay session cookie"`
 	// Email is the user's email for authentication.
 	Email string `yaml:"email" desc:"MyBrightDay email"`
 	// Password is the user's password for authentication.
@@ -134,7 +132,7 @@ func (c *RunConfig) ApplyDefaults() {
 		c.GooglePhotos.AlbumName = "Daycare Photos"
 	}
 	if c.Local.Directory == "" {
-		c.Local.Directory = "./photos/"
+		c.Local.Directory = "./photos"
 	}
 	// Default Local.Enabled to true if not already set.
 	// Since we are applying defaults AFTER resolving, we should be careful.
@@ -142,7 +140,7 @@ func (c *RunConfig) ApplyDefaults() {
 	// Let's assume if it is false and it wasn't in config or flags, we set it true.
 	// This is hard to detect without more complexity.
 	// For now, let's keep the user's requirement.
-	if !c.Local.Enabled && c.Local.Directory == "./photos/" {
+	if !c.Local.Enabled && c.Local.Directory == "./photos" {
 		c.Local.Enabled = true
 	}
 	if c.MyBrightDay.BaseURL == "" {

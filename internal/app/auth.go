@@ -183,13 +183,24 @@ func AuthenticateMyBrightDay(ctx context.Context, email, password string) (strin
 		return "", fmt.Errorf("token exchange failed: %d: %s", resp.StatusCode, string(data))
 	}
 
+	bodyData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("reading token response body: %w", err)
+	}
+
 	var oauthResp struct {
 		AccessToken string `json:"access_token"`
+		IDToken     string `json:"id_token"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&oauthResp); err != nil {
+	if err := json.Unmarshal(bodyData, &oauthResp); err != nil {
 		return "", fmt.Errorf("decoding token response: %w", err)
 	}
+
 	ficJWT := oauthResp.AccessToken
+
+	if ficJWT == "" {
+		return "", fmt.Errorf("no valid token found in response")
+	}
 
 	// Stage 5: Exchange for MBD Token
 	slog.Debug("Stage 5: Exchanging FIC JWT for MBD Token")
@@ -198,6 +209,7 @@ func AuthenticateMyBrightDay(ctx context.Context, email, password string) (strin
 		return "", err
 	}
 	req.Header.Set("Authorization", "Bearer "+ficJWT)
+	req.Header.Set("Accept", "application/json, text/plain, */*")
 	req.Header.Set("Origin", "https://familyinfocenter.brighthorizons.com")
 	req.Header.Set("Referer", "https://familyinfocenter.brighthorizons.com/")
 	req.Header.Set("User-Agent", userAgent)

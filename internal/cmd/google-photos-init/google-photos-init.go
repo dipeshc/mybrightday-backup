@@ -1,4 +1,4 @@
-package initcmd
+package googlephotosinit
 
 import (
 	"context"
@@ -11,14 +11,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	googlePhotos bool
-)
-
 var Cmd = &cobra.Command{
-	Use:   "init",
-	Short: "Initialize configuration and authentication",
-	Long:  `Set up the required credentials for MyBrightDay Backup. By default, it prompts for the MyBrightDay session cookie. Use --google-photos to also perform Google Photos authentication.`,
+	Use:   "google-photos-init",
+	Short: "Initialize Google Photos authentication",
+	Long:  `Set up the required credentials for Google Photos. It will prompt for authorization and save your token.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		flagsMap := make(map[string]string)
 		fields := config.Analyze(&app.InitConfig{}, "")
@@ -50,13 +46,11 @@ var Cmd = &cobra.Command{
 		cfg.Resolve(flagsMap)
 		app.SetupLogging(cfg.Logging.Verbose, cfg.Logging.Format)
 
-		return app.RunInit(context.Background(), googlePhotos, cfg)
+		return app.RunGooglePhotosInit(context.Background(), cfg)
 	},
 }
 
 func init() {
-	Cmd.Flags().BoolVar(&googlePhotos, "google-photos", false, "Enable Google Photos authentication flow")
-
 	// Dynamically register all configuration fields as flags.
 	fields := config.Analyze(&app.InitConfig{}, "")
 	for _, f := range fields {

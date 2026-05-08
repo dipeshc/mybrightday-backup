@@ -3,7 +3,7 @@ package cmd
 import (
 	"github.com/dipesh/mybrightday-backup/internal/cmd/config"
 	"github.com/dipesh/mybrightday-backup/internal/cmd/download"
-	initcmd "github.com/dipesh/mybrightday-backup/internal/cmd/init"
+	googlephotosinit "github.com/dipesh/mybrightday-backup/internal/cmd/google-photos-init"
 	"github.com/dipesh/mybrightday-backup/internal/cmd/version"
 	"github.com/spf13/cobra"
 )
@@ -19,7 +19,7 @@ var RootCmd = &cobra.Command{
 func init() {
 	RootCmd.AddCommand(config.Cmd)
 	RootCmd.AddCommand(download.Cmd)
-	RootCmd.AddCommand(initcmd.Cmd)
+	RootCmd.AddCommand(googlephotosinit.Cmd)
 	RootCmd.AddCommand(version.Cmd)
 }
 

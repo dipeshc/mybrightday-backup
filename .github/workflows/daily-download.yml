@@ -1,14 +1,14 @@
 name: Daily Sync
 
 on:
-  workflow_dispatch: # Allows manual triggering
+  # Runs at 02:00 UTC (7 PM US/Pacific).
   schedule:
-    # Runs at 19:00 UTC (7 PM UTC).
-    # Adjust the hour as needed for your specific local timezone offset.
     - cron: '0 19 * * *'
+  # Also allows manual triggering
+  workflow_dispatch:
 
 jobs:
-  sync:
+  download:
     runs-on: ubuntu-latest
     steps:
       - name: Download Latest Release
@@ -20,10 +20,11 @@ jobs:
           tar -xzf mbdb-linux-amd64.tar.gz
           chmod +x mbdb
 
-      - name: Run MyBrightDay Backup Sync
+      - name: Run MyBrightDay Download
         env:
           # Inject repository secrets into environment variables
-          MYBRIGHTDAY_SESSION_COOKIE_SECRET: ${{ secrets.MYBRIGHTDAY_SESSION_COOKIE_SECRET }}
+          MYBRIGHTDAY_EMAIL: ${{ secrets.MYBRIGHTDAY_EMAIL }}
+          MYBRIGHTDAY_PASSWORD: ${{ secrets.MYBRIGHTDAY_PASSWORD }}
           GOOGLE_PHOTOS_TOKEN_SECRET: ${{ secrets.GOOGLE_PHOTOS_TOKEN_SECRET }}
         run: |
           ./mbdb download \

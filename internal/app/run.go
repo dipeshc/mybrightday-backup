@@ -35,11 +35,15 @@ func parseDateString(d string) (string, error) {
 // If googlePhotos is true, it also uploads them to Google Photos.
 // If date is empty it defaults to today. date can be a single date (YYYY-MM-DD) or a range (YYYY-MM-DD:YYYY-MM-DD).
 func RunProcess(ctx context.Context, cfg *RunConfig) error {
-	if cfg.MyBrightDay.SessionCookieSecret == "" {
-		return errors.New("mybrightday_session_cookie_secret is required — set it via flag, env var, file, or config.yaml")
+	if cfg.MyBrightDay.Email == "" || cfg.MyBrightDay.Password == "" {
+		return errors.New("mybrightday_email and mybrightday_password are required — set them via flag, env var, file, or config.yaml")
 	}
 
-	cookie := cfg.MyBrightDay.SessionCookieSecret
+	slog.Info("Authenticating with MyBrightDay...", "email", cfg.MyBrightDay.Email)
+	cookie, err := AuthenticateMyBrightDay(ctx, cfg.MyBrightDay.Email, cfg.MyBrightDay.Password)
+	if err != nil {
+		return fmt.Errorf("mybrightday authentication: %w", err)
+	}
 
 	rawStart := cfg.Date
 	rawEnd := cfg.Date
