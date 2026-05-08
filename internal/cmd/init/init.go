@@ -6,8 +6,8 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/dipesh/daycare-photos/internal/app"
-	"github.com/dipesh/daycare-photos/pkg/config"
+	"github.com/dipesh/mybrightday-photos-downloader/internal/app"
+	"github.com/dipesh/mybrightday-photos-downloader/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +18,7 @@ var (
 var Cmd = &cobra.Command{
 	Use:   "init",
 	Short: "Initialize configuration and authentication",
-	Long:  `Set up the required credentials for daycare-photos. By default, it prompts for the MyBrightDay session cookie. Use --google-photos to also perform Google Photos authentication.`,
+	Long:  `Set up the required credentials for mybrightday-photos-downloader. By default, it prompts for the MyBrightDay session cookie. Use --google-photos to also perform Google Photos authentication.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		flagsMap := make(map[string]string)
 		fields := config.Analyze(&app.InitConfig{}, "")

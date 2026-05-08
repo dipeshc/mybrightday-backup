@@ -1,13 +1,13 @@
 .DEFAULT_GOAL := build
 
 VERSION ?= development
-LDFLAGS := -ldflags "-X github.com/dipesh/daycare-photos/internal/app.Version=$(VERSION)"
+LDFLAGS := -ldflags "-X github.com/dipesh/mybrightday-photos-downloader/internal/app.Version=$(VERSION)"
 
 .PHONY: build clean tidy fmt
 
 clean:
 	go clean
-	rm -f daycare-photos
+	rm -f mybrightday-photos-downloader
 
 tidy:
 	go mod tidy
@@ -16,4 +16,4 @@ fmt:
 	go fmt ./...
 
 build: clean tidy fmt
-	go build $(LDFLAGS) -o daycare-photos ./cmd/daycare-photos
+	go build $(LDFLAGS) -o mybrightday-photos-downloader ./cmd/mybrightday-photos-downloader

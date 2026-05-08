@@ -29,16 +29,16 @@ jobs:
         include:
           - goos: darwin
             goarch: arm64
-            artifact: daycare-photos-darwin-arm64.tar.gz
+            artifact: mybrightday-photos-downloader-darwin-arm64.tar.gz
           - goos: darwin
             goarch: amd64
-            artifact: daycare-photos-darwin-amd64.tar.gz
+            artifact: mybrightday-photos-downloader-darwin-amd64.tar.gz
           - goos: linux
             goarch: amd64
-            artifact: daycare-photos-linux-amd64.tar.gz
+            artifact: mybrightday-photos-downloader-linux-amd64.tar.gz
           - goos: windows
             goarch: amd64
-            artifact: daycare-photos-windows-amd64.zip
+            artifact: mybrightday-photos-downloader-windows-amd64.zip
 
     steps:
       - name: Check out repository code
@@ -60,12 +60,12 @@ jobs:
         shell: bash
         run: |
           mkdir -p build dist
-          BINARY=daycare-photos
+          BINARY=mybrightday-photos-downloader
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            BINARY=daycare-photos.exe
+            BINARY=mybrightday-photos-downloader.exe
           fi
-          go build -ldflags "-X github.com/dipesh/daycare-photos/internal/app.Version=${VERSION}" \
-            -o build/${BINARY} ./cmd/daycare-photos
+          go build -ldflags "-X github.com/dipesh/mybrightday-photos-downloader/internal/app.Version=${VERSION}" \
+            -o build/${BINARY} ./cmd/mybrightday-photos-downloader
           if [[ "${{ matrix.artifact }}" == *.zip ]]; then
             cd build && zip ../dist/${{ matrix.artifact }} ${BINARY}
           else

@@ -17,16 +17,16 @@ jobs:
         run: |
           # Fetch the latest release for Linux AMD64
           gh release download --repo ${{ github.repository }} --pattern "*linux-amd64.tar.gz"
-          tar -xzf daycare-photos-linux-amd64.tar.gz
-          chmod +x daycare-photos
+          tar -xzf mybrightday-photos-downloader-linux-amd64.tar.gz
+          chmod +x mybrightday-photos-downloader
 
-      - name: Run Daycare Photos Sync
+      - name: Run MyBrightDay Photos Downloader Sync
         env:
           # Inject repository secrets into environment variables
           MYBRIGHTDAY_SESSION_COOKIE_SECRET: ${{ secrets.MYBRIGHTDAY_SESSION_COOKIE_SECRET }}
           GOOGLE_PHOTOS_TOKEN_SECRET: ${{ secrets.GOOGLE_PHOTOS_TOKEN_SECRET }}
         run: |
-          ./daycare-photos run \
+          ./mybrightday-photos-downloader run \
             --date "-7:+3" \
             --local-enabled=false \
             --google-photos-enabled=true \

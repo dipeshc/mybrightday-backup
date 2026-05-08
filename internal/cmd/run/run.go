@@ -6,8 +6,8 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/dipesh/daycare-photos/internal/app"
-	"github.com/dipesh/daycare-photos/pkg/config"
+	"github.com/dipesh/mybrightday-photos-downloader/internal/app"
+	"github.com/dipesh/mybrightday-photos-downloader/pkg/config"
 	"github.com/spf13/cobra"
 )
 

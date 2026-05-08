@@ -1,4 +1,4 @@
-module github.com/dipesh/daycare-photos
+module github.com/dipesh/mybrightday-photos-downloader
 
 go 1.23
 

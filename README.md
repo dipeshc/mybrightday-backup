@@ -1,23 +1,23 @@
-# Daycare Photos
+# MyBrightDay Photos Downloader
 
-A tool to automatically download daycare photos from the MyBrightDay API and optionally back them up to Google Photos with accurate EXIF metadata.
+A tool to automatically download photos from the MyBrightDay application and optionally back them up to Google Photos.
 
 ## Getting Started
 
 ### Download
-Download the latest binary for your operating system from the [Releases](https://github.com/dipesh/daycare-photos/releases) page.
+Download the latest binary for your operating system from the [Releases](https://github.com/dipesh/mybrightday-photos-downloader/releases) page.
 
 ### Running Commands
 Initialize authentication (MyBrightDay session and optionally Google Photos):
 ```bash
-./daycare-photos init
-./daycare-photos init --google-photos
+./mybrightday-photos-downloader init
+./mybrightday-photos-downloader init --google-photos
 ```
 
 Run the sync (defaults to today):
 ```bash
-./daycare-photos run
-./daycare-photos run --date -7:0  # Last 7 days
+./mybrightday-photos-downloader run
+./mybrightday-photos-downloader run --date -7:0  # Last 7 days
 ```
 
 ### Configuration

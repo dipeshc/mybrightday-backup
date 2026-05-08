@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dipesh/daycare-photos/internal/credential"
+	"github.com/dipesh/mybrightday-photos-downloader/internal/credential"
 )
 
 func main() {

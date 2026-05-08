@@ -5,8 +5,8 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/dipesh/daycare-photos/internal/app"
-	"github.com/dipesh/daycare-photos/pkg/config"
+	"github.com/dipesh/mybrightday-photos-downloader/internal/app"
+	"github.com/dipesh/mybrightday-photos-downloader/pkg/config"
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +44,7 @@ var Cmd = &cobra.Command{
 		cfg.Resolve(flagsMap)
 		app.SetupLogging(cfg.Logging.Verbose, cfg.Logging.Format)
 
-		fmt.Printf("daycare-photos %s\n", app.Version)
+		fmt.Printf("mybrightday-photos-downloader %s\n", app.Version)
 		return nil
 	},
 }
