@@ -1,0 +1,33 @@
+name: Daily Sync
+
+on:
+  schedule:
+    # Runs at 19:00 UTC (7 PM UTC).
+    # Adjust the hour as needed for your specific local timezone offset.
+    - cron: '0 19 * * *'
+  workflow_dispatch: # Allows manual triggering for testing
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Latest Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Fetch the latest release for Linux AMD64
+          gh release download --repo ${{ github.repository }} --pattern "*linux-amd64.tar.gz"
+          tar -xzf daycare-photos-linux-amd64.tar.gz
+          chmod +x daycare-photos
+
+      - name: Run Daycare Photos Sync
+        env:
+          # Inject repository secrets into environment variables
+          MYBRIGHTDAY_SESSION_COOKIE_SECRET: ${{ secrets.MYBRIGHTDAY_SESSION_COOKIE_SECRET }}
+          GOOGLE_PHOTOS_TOKEN_SECRET: ${{ secrets.GOOGLE_PHOTOS_TOKEN_SECRET }}
+        run: |
+          ./daycare-photos run \
+            --date "-7:+3" \
+            --local-enabled=false \
+            --google-photos-enabled=true \
+            --logging-verbose
