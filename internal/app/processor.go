@@ -47,10 +47,10 @@ func convertToJPEG(data []byte) ([]byte, error) {
 	return encodeJPEG(img)
 }
 
-// encodeJPEG encodes an image as JPEG with quality 95.
+// encodeJPEG encodes an image as JPEG with quality 100 to minimise lossy artefacts.
 func encodeJPEG(img image.Image) ([]byte, error) {
 	var buf bytes.Buffer
-	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95}); err != nil {
+	if err := jpeg.Encode(&buf, img, &jpeg.Options{Quality: 100}); err != nil {
 		return nil, fmt.Errorf("encoding JPEG: %w", err)
 	}
 	return buf.Bytes(), nil
