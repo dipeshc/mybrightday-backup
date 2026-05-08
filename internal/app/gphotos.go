@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 )
 
 const (
@@ -17,6 +18,11 @@ const (
 	photosAlbumsURL     = "https://photoslibrary.googleapis.com/v1/albums"
 	photosSearchURL     = "https://photoslibrary.googleapis.com/v1/mediaItems:search"
 )
+
+// uploadedIDsDateBuffer is the number of days added to each side of the sync date range
+// when querying Google Photos for deduplication, guarding against timezone-edge photos
+// and minor date-metadata drift.
+const uploadedIDsDateBuffer = 2
 
 // attachmentIDFromFilenameRe extracts a MongoDB ObjectId from filenames like daycare_2024-01-15_69f9390f8d9c1412adacc127.jpg.
 var attachmentIDFromFilenameRe = regexp.MustCompile(
@@ -85,11 +91,36 @@ type createAlbumBody struct {
 	Title string `json:"title"`
 }
 
-// searchMediaItemsRequest is the request body for searching media items in an album.
+// googleDate is a calendar date for the Google Photos date filter.
+type googleDate struct {
+	Year  int `json:"year"`
+	Month int `json:"month"`
+	Day   int `json:"day"`
+}
+
+// googleDateRange is an inclusive date range for the Google Photos date filter.
+type googleDateRange struct {
+	StartDate googleDate `json:"startDate"`
+	EndDate   googleDate `json:"endDate"`
+}
+
+// googleDateFilter selects media items whose capture date falls within any of the given ranges.
+type googleDateFilter struct {
+	Ranges []googleDateRange `json:"ranges"`
+}
+
+// googleFilters is the top-level filters object for mediaItems:search.
+type googleFilters struct {
+	DateFilter googleDateFilter `json:"dateFilter"`
+}
+
+// searchMediaItemsRequest is the request body for searching media items in the library.
+// albumId and filters are mutually exclusive in the Google Photos API, so this struct
+// uses filters for date-range scoped deduplication checks.
 type searchMediaItemsRequest struct {
-	AlbumID   string `json:"albumId"`
-	PageSize  int    `json:"pageSize"`
-	PageToken string `json:"pageToken,omitempty"`
+	PageSize  int           `json:"pageSize"`
+	PageToken string        `json:"pageToken,omitempty"`
+	Filters   googleFilters `json:"filters"`
 }
 
 // searchMediaItemsResponse is the response from the media items search endpoint.
@@ -215,18 +246,37 @@ func createAlbum(ctx context.Context, client *http.Client, title string) (string
 	return album.ID, nil
 }
 
-// listAlbumAttachmentIDs paginates through all media items in an album and extracts
-// attachment IDs from filenames matching the daycare_*_<24hexID>.jpg pattern.
-// Returns a set of attachment IDs already present in the album.
-func listAlbumAttachmentIDs(ctx context.Context, client *http.Client, albumID string) (map[string]bool, error) {
+// listUploadedAttachmentIDs paginates through library media items within a buffered date
+// range and extracts attachment IDs from filenames matching the daycare_*_<24hexID>.jpg
+// pattern. The query window is expanded by uploadedIDsDateBuffer days on each side to
+// account for timezone-edge photos and minor date-metadata drift.
+//
+// The photoslibrary.readonly.appcreateddata OAuth scope ensures only items uploaded by
+// this app are returned, so searching the library (rather than a specific album) is safe
+// and also catches duplicates across albums.
+func listUploadedAttachmentIDs(ctx context.Context, client *http.Client, startDate, endDate time.Time) (map[string]bool, error) {
+	buffered := startDate.AddDate(0, 0, -uploadedIDsDateBuffer)
+	bufferedEnd := endDate.AddDate(0, 0, uploadedIDsDateBuffer)
+
+	filter := googleFilters{
+		DateFilter: googleDateFilter{
+			Ranges: []googleDateRange{
+				{
+					StartDate: googleDate{Year: buffered.Year(), Month: int(buffered.Month()), Day: buffered.Day()},
+					EndDate:   googleDate{Year: bufferedEnd.Year(), Month: int(bufferedEnd.Month()), Day: bufferedEnd.Day()},
+				},
+			},
+		},
+	}
+
 	ids := make(map[string]bool)
 	pageToken := ""
 
 	for {
 		searchReq := searchMediaItemsRequest{
-			AlbumID:   albumID,
 			PageSize:  100,
 			PageToken: pageToken,
+			Filters:   filter,
 		}
 
 		jsonData, err := json.Marshal(searchReq)

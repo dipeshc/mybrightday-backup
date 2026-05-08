@@ -61,6 +61,9 @@ func RunProcess(ctx context.Context, cfg *RunConfig) error {
 		return err
 	}
 
+	startTime, _ := time.Parse("2006-01-02", startDate)
+	endTime, _ := time.Parse("2006-01-02", endDate)
+
 	slog.Debug("Processing range", "start_date", startDate, "end_date", endDate)
 
 	var oauthClient *http.Client
@@ -92,13 +95,11 @@ func RunProcess(ctx context.Context, cfg *RunConfig) error {
 			slog.Debug("Using album", "name", cfg.GooglePhotos.AlbumName, "id", albumID)
 		}
 
-		if albumID != "" {
-			uploadedIDs, err = listAlbumAttachmentIDs(ctx, oauthClient, albumID)
-			if err != nil {
-				return fmt.Errorf("listing album contents: %w", err)
-			}
-			slog.Debug("Album content summary", "count", len(uploadedIDs))
+		uploadedIDs, err = listUploadedAttachmentIDs(ctx, oauthClient, startTime, endTime)
+		if err != nil {
+			return fmt.Errorf("listing uploaded photos: %w", err)
 		}
+		slog.Debug("Uploaded photos in date window", "count", len(uploadedIDs))
 	}
 
 	mbd := NewMyBrightDayClient(cfg.MyBrightDay.BaseURL, cookie)
