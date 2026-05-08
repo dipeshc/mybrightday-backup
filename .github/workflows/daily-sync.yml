@@ -26,7 +26,7 @@ jobs:
           MYBRIGHTDAY_SESSION_COOKIE_SECRET: ${{ secrets.MYBRIGHTDAY_SESSION_COOKIE_SECRET }}
           GOOGLE_PHOTOS_TOKEN_SECRET: ${{ secrets.GOOGLE_PHOTOS_TOKEN_SECRET }}
         run: |
-          ./mbdb run \
+          ./mbdb download \
             --date "-7:+3" \
             --local-enabled=false \
             --google-photos-enabled=true \

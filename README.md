@@ -14,10 +14,10 @@ Initialize authentication (MyBrightDay session and optionally Google Photos):
 ./mbdb init --google-photos
 ```
 
-Run the sync (defaults to today):
+Download photos (defaults to today):
 ```bash
-./mbdb run
-./mbdb run --date -7:0  # Last 7 days
+./mbdb download
+./mbdb download --date -7:0  # Last 7 days
 ```
 
 ### Configuration

@@ -1,4 +1,4 @@
-package run
+package download
 
 import (
 	"context"
@@ -11,20 +11,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var (
-	configPath string
-)
-
 var Cmd = &cobra.Command{
-	Use:   "run",
+	Use:   "download",
 	Short: "Download daycare photos",
 	Long:  `Fetch photos from the MyBrightDay API for a given date, inject EXIF metadata, and save them locally. Optionally upload to Google Photos.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		cfg := &app.RunConfig{}
-		if err := app.LoadConfig(configPath, cfg); err != nil {
-			return err
-		}
-
 		flagsMap := make(map[string]string)
 		fields := config.Analyze(app.NewDefaultRunConfig(), "")
 		for _, f := range fields {
@@ -47,7 +38,7 @@ var Cmd = &cobra.Command{
 			configPath = "config.yaml"
 		}
 
-		cfg = &app.RunConfig{}
+		cfg := &app.RunConfig{}
 		if err := app.LoadConfig(configPath, cfg); err != nil {
 			return err
 		}
@@ -56,12 +47,10 @@ var Cmd = &cobra.Command{
 		app.SetupLogging(cfg.Logging.Verbose, cfg.Logging.Format)
 
 		return app.RunProcess(context.Background(), cfg)
-
 	},
 }
 
 func init() {
-	// Dynamically register all configuration fields as flags.
 	fields := config.Analyze(app.NewDefaultRunConfig(), "")
 
 	for _, f := range fields {
