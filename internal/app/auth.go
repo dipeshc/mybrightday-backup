@@ -16,7 +16,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
-	"github.com/dipesh/mybrightday-photos-downloader/internal/credential"
+	"github.com/dipesh/mybrightday-backup/internal/credential"
 )
 
 // buildOAuthConfig returns an OAuth2 config using the client_secret JSON string if provided,

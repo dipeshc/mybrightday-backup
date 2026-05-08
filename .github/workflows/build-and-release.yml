@@ -29,16 +29,16 @@ jobs:
         include:
           - goos: darwin
             goarch: arm64
-            artifact: mybrightday-photos-downloader-darwin-arm64.tar.gz
+            artifact: mbdb-darwin-arm64.tar.gz
           - goos: darwin
             goarch: amd64
-            artifact: mybrightday-photos-downloader-darwin-amd64.tar.gz
+            artifact: mbdb-darwin-amd64.tar.gz
           - goos: linux
             goarch: amd64
-            artifact: mybrightday-photos-downloader-linux-amd64.tar.gz
+            artifact: mbdb-linux-amd64.tar.gz
           - goos: windows
             goarch: amd64
-            artifact: mybrightday-photos-downloader-windows-amd64.zip
+            artifact: mbdb-windows-amd64.zip
 
     steps:
       - name: Check out repository code
@@ -60,12 +60,12 @@ jobs:
         shell: bash
         run: |
           mkdir -p build dist
-          BINARY=mybrightday-photos-downloader
+          BINARY=mbdb
           if [ "${{ matrix.goos }}" = "windows" ]; then
-            BINARY=mybrightday-photos-downloader.exe
+            BINARY=mbdb.exe
           fi
-          go build -ldflags "-X github.com/dipesh/mybrightday-photos-downloader/internal/app.Version=${VERSION}" \
-            -o build/${BINARY} ./cmd/mybrightday-photos-downloader
+          go build -ldflags "-X github.com/dipesh/mybrightday-backup/internal/app.Version=${VERSION}" \
+            -o build/${BINARY} ./cmd/mbdb
           if [[ "${{ matrix.artifact }}" == *.zip ]]; then
             cd build && zip ../dist/${{ matrix.artifact }} ${BINARY}
           else

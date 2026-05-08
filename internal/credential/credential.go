@@ -27,11 +27,11 @@ var cryptKey = []byte{
 
 // ClientID is the Google OAuth application client ID.
 // Client IDs are not secrets — they are exchanged publicly during the OAuth flow.
-const ClientID = "484330940455-jocqgpgt5o3sqhi3f8mi75igh812sr9g.apps.googleusercontent.com"
+const ClientID = "1063275621143-n5l79mj96ni075aiql9ranvjmnubnumu.apps.googleusercontent.com"
 
 // encryptedClientSecret is the Google OAuth client secret in obfuscated form.
 // Generated once with: go run ./tools/obscure <plaintext>
-const encryptedClientSecret = "FiqK3WleQ9PWcHzgE-IfAnReQ8NtoQspcr6oHI05ayPHKM93Ih8_U9VvQa-ahRVo68nC"
+const encryptedClientSecret = "HMI1wmL8bpb4gE91qlbRiPE4ZYmqp5OUDjqKs0E4Sba3CRwFwElXDtd_xGdz4R6H2jVz"
 
 // ClientSecret returns the plaintext OAuth client secret.
 func ClientSecret() string {

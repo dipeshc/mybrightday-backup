@@ -5,7 +5,7 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/dipesh/mybrightday-photos-downloader/pkg/config"
+	"github.com/dipesh/mybrightday-backup/pkg/config"
 	"gopkg.in/yaml.v3"
 )
 

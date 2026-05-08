@@ -7,8 +7,8 @@ import (
 	"os"
 	"reflect"
 
-	"github.com/dipesh/mybrightday-photos-downloader/internal/app"
-	pkgconfig "github.com/dipesh/mybrightday-photos-downloader/pkg/config"
+	"github.com/dipesh/mybrightday-backup/internal/app"
+	pkgconfig "github.com/dipesh/mybrightday-backup/pkg/config"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -24,7 +24,7 @@ and flags, then print the result as YAML to standard output.
 
 Useful for generating a config.yaml for the first time:
 
-  mybrightday-photos-downloader config > config.yaml`,
+  mbdb config > config.yaml`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		flagsMap := make(map[string]string)
 		fields := pkgconfig.Analyze(app.NewDefaultRunConfig(), "")

@@ -152,7 +152,7 @@ func (c *MyBrightDayClient) geocode(ctx context.Context, query string) (float64,
 	if err != nil {
 		return 0, 0, fmt.Errorf("creating geocode request: %w", err)
 	}
-	req.Header.Set("User-Agent", "mybrightday-photos-downloader/1.0")
+	req.Header.Set("User-Agent", "mbdb/1.0")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

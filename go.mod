@@ -1,4 +1,4 @@
-module github.com/dipesh/mybrightday-photos-downloader
+module github.com/dipesh/mybrightday-backup
 
 go 1.23
 

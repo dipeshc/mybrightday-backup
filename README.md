@@ -1,23 +1,23 @@
-# MyBrightDay Photos Downloader
+# MyBrightDay Backup
 
-A tool to automatically download photos from the MyBrightDay application and optionally back them up to Google Photos.
+A tool to automatically back up photos from the MyBrightDay application, with optional upload to Google Photos.
 
 ## Getting Started
 
 ### Download
-Download the latest binary for your operating system from the [Releases](https://github.com/dipesh/mybrightday-photos-downloader/releases) page.
+Download the latest binary for your operating system from the [Releases](https://github.com/dipesh/mybrightday-backup/releases) page.
 
 ### Running Commands
 Initialize authentication (MyBrightDay session and optionally Google Photos):
 ```bash
-./mybrightday-photos-downloader init
-./mybrightday-photos-downloader init --google-photos
+./mbdb init
+./mbdb init --google-photos
 ```
 
 Run the sync (defaults to today):
 ```bash
-./mybrightday-photos-downloader run
-./mybrightday-photos-downloader run --date -7:0  # Last 7 days
+./mbdb run
+./mbdb run --date -7:0  # Last 7 days
 ```
 
 ### Configuration
@@ -38,9 +38,11 @@ Build the binary locally using the Makefile:
 make build
 ```
 
-### Google Cloud Setup
+### [Advanced] Google Cloud Setup
 The distributed binary includes default Google OAuth credentials. To use your own Google Cloud project during development:
 1. Create a project in the [Google Cloud Console](https://console.cloud.google.com/).
-2. Enable the **Photos Library API** and configure the OAuth consent screen.
+2. Enable the **Google Photos Library API** and configure the OAuth consent screen with the below scopes:
+   - `https://www.googleapis.com/auth/photoslibrary.appendonly`
+   - `https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata`
 3. Create an **OAuth 2.0 Client ID** (Desktop app) and download the JSON secret.
 4. Provide the secret via the `google_photos.client_secret` config key (e.g., in `config.yaml` or via the `GOOGLE_PHOTOS_CLIENT_SECRET` environment variable).

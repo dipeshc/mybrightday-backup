@@ -17,16 +17,16 @@ jobs:
         run: |
           # Fetch the latest release for Linux AMD64
           gh release download --repo ${{ github.repository }} --pattern "*linux-amd64.tar.gz"
-          tar -xzf mybrightday-photos-downloader-linux-amd64.tar.gz
-          chmod +x mybrightday-photos-downloader
+          tar -xzf mbdb-linux-amd64.tar.gz
+          chmod +x mbdb
 
-      - name: Run MyBrightDay Photos Downloader Sync
+      - name: Run MyBrightDay Backup Sync
         env:
           # Inject repository secrets into environment variables
           MYBRIGHTDAY_SESSION_COOKIE_SECRET: ${{ secrets.MYBRIGHTDAY_SESSION_COOKIE_SECRET }}
           GOOGLE_PHOTOS_TOKEN_SECRET: ${{ secrets.GOOGLE_PHOTOS_TOKEN_SECRET }}
         run: |
-          ./mybrightday-photos-downloader run \
+          ./mbdb run \
             --date "-7:+3" \
             --local-enabled=false \
             --google-photos-enabled=true \

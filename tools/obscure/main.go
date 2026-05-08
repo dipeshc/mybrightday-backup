@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dipesh/mybrightday-photos-downloader/internal/credential"
+	"github.com/dipesh/mybrightday-backup/internal/credential"
 )
 
 func main() {
