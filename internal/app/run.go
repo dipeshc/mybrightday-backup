@@ -68,7 +68,7 @@ func RunProcess(ctx context.Context, cfg *RunConfig) error {
 	var uploadedIDs = make(map[string]bool)
 
 	if cfg.GooglePhotos.Enabled {
-		oauthClient, err := getOAuthClient(ctx, cfg)
+		oauthClient, err = getOAuthClient(ctx, cfg)
 		if err != nil {
 			return err
 		}

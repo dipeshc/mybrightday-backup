@@ -1,11 +1,11 @@
 name: Daily Sync
 
 on:
+  workflow_dispatch: # Allows manual triggering
   schedule:
     # Runs at 19:00 UTC (7 PM UTC).
     # Adjust the hour as needed for your specific local timezone offset.
     - cron: '0 19 * * *'
-  workflow_dispatch: # Allows manual triggering for testing
 
 jobs:
   sync:
