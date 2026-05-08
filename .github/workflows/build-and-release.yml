@@ -18,7 +18,7 @@ jobs:
       - name: Generate version
         id: version
         shell: bash
-        run: echo "value=1.0.${{ github.run_number }}" >> $GITHUB_OUTPUT
+        run: echo "value=$(date +'%Y-%m-%d')-${{ github.run_number }}" >> $GITHUB_OUTPUT
 
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}

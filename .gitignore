@@ -1,12 +1,11 @@
-# OAuth client secret and tokens
-client_secret.json
-token.json
-
-# Configuration (contains location data)
-config.yaml
-
 # Built binary
 daycare-photos
 
-# Log files
-*.log
+# The configuration
+config.yaml
+
+# The downloaded photos
+photos
+
+# Secrets
+*_secret

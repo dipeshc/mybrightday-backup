@@ -2,189 +2,258 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 )
 
-// RunProcess searches for emails, extracts photos, and uploads them to Google Photos.
-func RunProcess(ctx context.Context, configPath string, dryRun bool) error {
-	cfg, err := LoadConfig(configPath)
+// parseDateString parses an absolute (YYYY-MM-DD) or relative (-1, +2, 0) date string.
+func parseDateString(d string) (string, error) {
+	if d == "" {
+		return time.Now().Format("2006-01-02"), nil
+	}
+
+	if days, err := strconv.Atoi(d); err == nil {
+		return time.Now().AddDate(0, 0, days).Format("2006-01-02"), nil
+	}
+
+	_, err := time.Parse("2006-01-02", d)
+	if err != nil {
+		return "", fmt.Errorf("invalid date format: %q (expected YYYY-MM-DD or relative like -1)", d)
+	}
+
+	return d, nil
+}
+
+// RunProcess fetches photos from the MyBrightDay API for the given date (or range) and saves them locally.
+// If googlePhotos is true, it also uploads them to Google Photos.
+// If date is empty it defaults to today. date can be a single date (YYYY-MM-DD) or a range (YYYY-MM-DD:YYYY-MM-DD).
+func RunProcess(ctx context.Context, cfg *RunConfig) error {
+	if cfg.MyBrightDay.SessionCookieSecret == "" {
+		return errors.New("mybrightday_session_cookie_secret is required — set it via flag, env var, file, or config.yaml")
+	}
+
+	cookie := cfg.MyBrightDay.SessionCookieSecret
+
+	rawStart := cfg.Date
+	rawEnd := cfg.Date
+	if strings.Contains(cfg.Date, ":") {
+		parts := strings.Split(cfg.Date, ":")
+		if len(parts) != 2 {
+			return fmt.Errorf("invalid date range format: %q (expected YYYY-MM-DD:YYYY-MM-DD)", cfg.Date)
+		}
+		rawStart = parts[0]
+		rawEnd = parts[1]
+	}
+
+	startDate, err := parseDateString(rawStart)
+	if err != nil {
+		return err
+	}
+	endDate, err := parseDateString(rawEnd)
 	if err != nil {
 		return err
 	}
 
-	slog.Debug("Config loaded", "path", configPath)
+	slog.Debug("Processing range", "start_date", startDate, "end_date", endDate)
 
-	client, err := getOAuthClient(ctx, cfg)
-	if err != nil {
-		return err
-	}
-
-	// Create a dedicated HTTP client for image downloads with a timeout.
-	downloadClient := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	// Resolve the Google Photos album and build the set of already-uploaded UUIDs.
+	var oauthClient *http.Client
 	var albumID string
-	if dryRun {
-		albumID, err = findAlbumByTitle(ctx, client, cfg.AlbumName)
+	var uploadedIDs = make(map[string]bool)
+
+	if cfg.GooglePhotos.Enabled {
+		oauthClient, err := getOAuthClient(ctx, cfg)
 		if err != nil {
-			return fmt.Errorf("searching for album: %w", err)
+			return err
 		}
-		if albumID == "" {
-			slog.Info("[DRY RUN] Would create album", "name", cfg.AlbumName)
+
+		// Resolve the Google Photos album.
+		if cfg.DryRun {
+			albumID, err = findAlbumByTitle(ctx, oauthClient, cfg.GooglePhotos.AlbumName)
+			if err != nil {
+				return fmt.Errorf("searching for album: %w", err)
+			}
+			if albumID == "" {
+				slog.Info("[DRY RUN] Would create album", "name", cfg.GooglePhotos.AlbumName)
+			} else {
+				slog.Debug("Found existing album", "name", cfg.GooglePhotos.AlbumName, "id", albumID)
+			}
 		} else {
-			slog.Debug("Found existing album", "name", cfg.AlbumName, "id", albumID)
+			albumID, err = findOrCreateAlbum(ctx, oauthClient, cfg.GooglePhotos.AlbumName)
+			if err != nil {
+				return fmt.Errorf("resolving album: %w", err)
+			}
+			slog.Debug("Using album", "name", cfg.GooglePhotos.AlbumName, "id", albumID)
 		}
+
+		if albumID != "" {
+			uploadedIDs, err = listAlbumAttachmentIDs(ctx, oauthClient, albumID)
+			if err != nil {
+				return fmt.Errorf("listing album contents: %w", err)
+			}
+			slog.Debug("Album content summary", "count", len(uploadedIDs))
+		}
+	}
+
+	mbd := NewMyBrightDayClient(cfg.MyBrightDay.BaseURL, cookie)
+
+	dependentIDs, centerIDs, err := mbd.GetDependentIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("getting dependent IDs: %w", err)
+	}
+	slog.Debug("Found dependents", "count", len(dependentIDs))
+
+	if len(dependentIDs) == 0 {
+		return errors.New("no dependents found")
+	}
+
+	// Fetch center info and geocode for the first dependent (assume all centers share same locale/timezone for now).
+	centerID := centerIDs[dependentIDs[0]]
+	center, err := mbd.GetCenterInfo(ctx, centerID)
+	if err != nil {
+		return fmt.Errorf("getting center info for %s: %w", centerID, err)
+	}
+
+	location, err := time.LoadLocation(center.Timezone)
+	if err != nil {
+		return fmt.Errorf("loading timezone %q: %w", center.Timezone, err)
+	}
+	slog.Debug("Using center location", "center", center.Name, "timezone", center.Timezone)
+
+	var lat, lon float64
+	if cfg.LocationOverride != nil {
+		lat = cfg.LocationOverride.Latitude
+		lon = cfg.LocationOverride.Longitude
+		slog.Debug("Using manual location override", "lat", lat, "lon", lon)
 	} else {
-		albumID, err = findOrCreateAlbum(ctx, client, cfg.AlbumName)
+		var err error
+		lat, lon, err = mbd.GeocodeCenterAddress(ctx, center)
 		if err != nil {
-			return fmt.Errorf("resolving album: %w", err)
+			addr := center.Address
+			return fmt.Errorf("could not geocode center address (%s, %s, %s %s): %w",
+				addr.AddressLine1, addr.City, addr.State, addr.PostalCode, err)
 		}
-		slog.Debug("Using album", "name", cfg.AlbumName, "id", albumID)
+		slog.Debug("Geocoded center", "lat", lat, "lon", lon)
 	}
 
-	uploadedUUIDs := make(map[string]bool)
-	if albumID != "" {
-		uploadedUUIDs, err = listAlbumUUIDs(ctx, client, albumID)
-		if err != nil {
-			return fmt.Errorf("listing album contents: %w", err)
-		}
-		slog.Debug("Album content summary", "count", len(uploadedUUIDs))
-	}
-
-	gmailSrv, err := newGmailService(ctx, client)
+	mediaItems, err := mbd.GetMediaForDateRange(ctx, dependentIDs, startDate, endDate)
 	if err != nil {
-		return fmt.Errorf("creating Gmail service: %w", err)
+		return fmt.Errorf("getting media for %s to %s: %w", startDate, endDate, err)
 	}
 
-	messages, err := searchEmails(ctx, gmailSrv, cfg)
-	if err != nil {
-		return fmt.Errorf("searching emails: %w", err)
-	}
-
-	if len(messages) == 0 {
-		slog.Info("No matching emails found in inbox.")
-		return nil
-	}
-
-	slog.Info("Found matching emails", "count", len(messages))
+	slog.Info("Found media items", "start_date", startDate, "end_date", endDate, "count", len(mediaItems))
 
 	totalPhotos := 0
 	skippedPhotos := 0
-	processedEmails := 0
 
-	for _, msg := range messages {
-		emailData, err := fetchEmail(ctx, gmailSrv, msg.Id)
-		if err != nil {
-			slog.Error("Error fetching email", "id", msg.Id, "error", err)
-			continue
+	for _, item := range mediaItems {
+		photoTime := item.CaptureTime.In(location)
+		captureDate := photoTime.Format("2006-01-02")
+		filename := fmt.Sprintf("daycare_%s_%s.jpg", captureDate, item.AttachmentID)
+		outputDir := filepath.Join(cfg.Local.Directory, captureDate)
+		localPath := filepath.Join(outputDir, filename)
+
+		alreadyProcessed := false
+		if cfg.GooglePhotos.Enabled && uploadedIDs[item.AttachmentID] {
+			alreadyProcessed = true
+		}
+		if cfg.Local.Enabled && !cfg.DryRun {
+			if _, err := os.Stat(localPath); err == nil {
+				alreadyProcessed = true
+			}
 		}
 
-		slog.Debug("Processing email",
-			"id", emailData.ID,
-			"subject", emailData.Subject,
-			"date", emailData.Date.Format(time.RFC3339))
-
-		images, err := extractImageURLs(emailData.HTMLBody)
-		if err != nil {
-			slog.Error("Error extracting image URLs",
-				"id", emailData.ID,
-				"subject", emailData.Subject,
-				"error", err)
-			continue
-		}
-
-		if len(images) == 0 {
-			slog.Debug("No image URLs found in email",
-				"id", emailData.ID,
-				"subject", emailData.Subject)
-			continue
-		}
-
-		slog.Info("Found images in email",
-			"count", len(images),
-			"subject", emailData.Subject)
-
-		for i, img := range images {
-			if uploadedUUIDs[img.UUID] {
-				slog.Debug("Skipping already-uploaded image",
-					"index", i+1,
-					"total", len(images),
-					"uuid", img.UUID)
+		if alreadyProcessed {
+			if !cfg.GooglePhotos.Enabled {
+				slog.Debug("Skipping already-processed attachment", "id", item.AttachmentID)
 				skippedPhotos++
 				continue
 			}
-
-			filename := fmt.Sprintf("daycare_%s_%02d_%s.jpg",
-				emailData.Date.Format("2006-01-02"),
-				i+1,
-				img.UUID,
-			)
-
-			slog.Debug("Downloading image",
-				"index", i+1,
-				"total", len(images),
-				"url", img.URL)
-
-			imgData, err := downloadImage(ctx, downloadClient, img.URL)
-			if err != nil {
-				slog.Error("Error downloading image", "index", i+1, "error", err)
+			if cfg.GooglePhotos.Enabled && uploadedIDs[item.AttachmentID] {
+				slog.Debug("Skipping already-uploaded attachment", "id", item.AttachmentID)
+				skippedPhotos++
 				continue
 			}
-
-			jpegData, err := convertToJPEG(imgData)
-			if err != nil {
-				slog.Error("Error converting image to JPEG", "index", i+1, "error", err)
-				continue
-			}
-
-			photoTime, err := calculatePhotoTime(emailData.Date, i, cfg)
-			if err != nil {
-				slog.Error("Error calculating photo time", "index", i+1, "error", err)
-				continue
-			}
-			meta := PhotoMeta{
-				DateTime:       photoTime,
-				TimezoneOffset: cfg.Photo.TimezoneOffset,
-				Latitude:       cfg.Photo.Latitude,
-				Longitude:      cfg.Photo.Longitude,
-			}
-
-			jpegWithEXIF, err := addEXIF(jpegData, meta)
-			if err != nil {
-				slog.Error("Error adding EXIF to image", "index", i+1, "error", err)
-				continue
-			}
-
-			if dryRun {
-				slog.Info("[DRY RUN] Would upload photo",
-					"filename", filename,
-					"size", len(jpegWithEXIF),
-					"time", photoTime.Format("15:04:05"))
-			} else {
-				mediaID, err := uploadToPhotos(ctx, client, jpegWithEXIF, filename, albumID)
-				if err != nil {
-					slog.Error("Error uploading image", "index", i+1, "error", err)
-					continue
-				}
-				// Mark as uploaded so duplicates within the same run are skipped.
-				uploadedUUIDs[img.UUID] = true
-				slog.Debug("Uploaded photo", "filename", filename, "mediaID", mediaID)
-			}
-
-			totalPhotos++
 		}
 
-		processedEmails++
+		slog.Debug("Downloading media", "attachment_id", item.AttachmentID)
+
+		imgData, err := mbd.DownloadMedia(ctx, item.AttachmentID)
+		if err != nil {
+			slog.Error("Error downloading media", "attachment_id", item.AttachmentID, "error", err)
+			continue
+		}
+
+		jpegData, err := convertToJPEG(imgData)
+		if err != nil {
+			slog.Error("Error converting image to JPEG", "attachment_id", item.AttachmentID, "error", err)
+			continue
+		}
+
+		_, offsetSecs := photoTime.Zone()
+		offsetStr := FormatOffset(offsetSecs)
+
+		meta := PhotoMeta{
+			DateTime:       photoTime,
+			TimezoneOffset: offsetStr,
+			Latitude:       lat,
+			Longitude:      lon,
+		}
+
+		jpegWithEXIF, err := addEXIF(jpegData, meta)
+		if err != nil {
+			slog.Error("Error adding EXIF", "attachment_id", item.AttachmentID, "error", err)
+			continue
+		}
+
+		if cfg.Local.Enabled {
+			if cfg.DryRun {
+				slog.Info("[DRY RUN] Would save photo locally", "path", localPath)
+			} else {
+				if err := os.MkdirAll(outputDir, 0755); err != nil {
+					slog.Error("Error creating output directory", "path", outputDir, "error", err)
+					continue
+				}
+				if err := os.WriteFile(localPath, jpegWithEXIF, 0644); err != nil {
+					slog.Error("Error saving photo locally", "path", localPath, "error", err)
+				} else {
+					slog.Debug("Saved photo locally", "path", localPath)
+				}
+			}
+		}
+
+		if cfg.GooglePhotos.Enabled {
+			if uploadedIDs[item.AttachmentID] {
+				slog.Debug("Already uploaded to Google Photos, skipping upload", "id", item.AttachmentID)
+			} else if cfg.DryRun {
+				slog.Info("[DRY RUN] Would upload photo to Google Photos",
+					"filename", filename,
+					"size", len(jpegWithEXIF),
+					"time", photoTime.Format("2006-01-02 15:04:05 -07:00"))
+			} else {
+				mediaID, err := uploadToPhotos(ctx, oauthClient, jpegWithEXIF, filename, albumID)
+				if err != nil {
+					slog.Error("Error uploading photo", "attachment_id", item.AttachmentID, "error", err)
+				} else {
+					uploadedIDs[item.AttachmentID] = true
+					slog.Debug("Uploaded photo", "filename", filename, "mediaID", mediaID)
+				}
+			}
+		}
+
+		totalPhotos++
 	}
 
 	slog.Info("Run summary",
-		"emails", processedEmails,
-		"uploaded", totalPhotos,
+		"start_date", startDate,
+		"end_date", endDate,
+		"processed", totalPhotos,
 		"skipped", skippedPhotos)
 
 	return nil

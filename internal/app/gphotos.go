@@ -18,9 +18,9 @@ const (
 	photosSearchURL     = "https://photoslibrary.googleapis.com/v1/mediaItems:search"
 )
 
-// uuidFromFilenameRe extracts a UUID from filenames like daycare_2024-01-15_01_87589cc7-2187-483e-b26c-397968daeeda.jpg.
-var uuidFromFilenameRe = regexp.MustCompile(
-	`^daycare_\d{4}-\d{2}-\d{2}_\d{2}_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\.jpg$`,
+// attachmentIDFromFilenameRe extracts a MongoDB ObjectId from filenames like daycare_2024-01-15_69f9390f8d9c1412adacc127.jpg.
+var attachmentIDFromFilenameRe = regexp.MustCompile(
+	`^daycare_\d{4}-\d{2}-\d{2}_([0-9a-fA-F]{24})\.jpg$`,
 )
 
 // batchCreateRequest is the request body for creating media items.
@@ -215,11 +215,11 @@ func createAlbum(ctx context.Context, client *http.Client, title string) (string
 	return album.ID, nil
 }
 
-// listAlbumUUIDs paginates through all media items in an album and extracts
-// snapshot UUIDs from filenames matching the daycare_*_UUID.jpg pattern.
-// Returns a set of UUIDs already present in the album.
-func listAlbumUUIDs(ctx context.Context, client *http.Client, albumID string) (map[string]bool, error) {
-	uuids := make(map[string]bool)
+// listAlbumAttachmentIDs paginates through all media items in an album and extracts
+// attachment IDs from filenames matching the daycare_*_<24hexID>.jpg pattern.
+// Returns a set of attachment IDs already present in the album.
+func listAlbumAttachmentIDs(ctx context.Context, client *http.Client, albumID string) (map[string]bool, error) {
+	ids := make(map[string]bool)
 	pageToken := ""
 
 	for {
@@ -261,8 +261,8 @@ func listAlbumUUIDs(ctx context.Context, client *http.Client, albumID string) (m
 		}
 
 		for _, item := range searchResp.MediaItems {
-			if matches := uuidFromFilenameRe.FindStringSubmatch(item.Filename); matches != nil {
-				uuids[matches[1]] = true
+			if matches := attachmentIDFromFilenameRe.FindStringSubmatch(item.Filename); matches != nil {
+				ids[matches[1]] = true
 			}
 		}
 
@@ -272,7 +272,7 @@ func listAlbumUUIDs(ctx context.Context, client *http.Client, albumID string) (m
 		pageToken = searchResp.NextPageToken
 	}
 
-	return uuids, nil
+	return ids, nil
 }
 
 // uploadToPhotos uploads JPEG data to Google Photos and creates a media item

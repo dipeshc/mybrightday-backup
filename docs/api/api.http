@@ -1,0 +1,31 @@
+### Open API Spec for Root
+GET https://mybrightday.brighthorizons.com/openapi.json
+
+### Open API Spec for API
+GET https://mybrightday.brighthorizons.com/api/v2/openapi.json
+
+### Get the current user profile
+GET https://mybrightday.brighthorizons.com/api/v2/user/profile
+{{cookie}}
+
+### Get a guardian's dependents
+GET https://mybrightday.brighthorizons.com/api/v2/dependents/guardian/<guardian_id>
+{{cookie}}
+
+### Get the center's information
+GET https://mybrightday.brighthorizons.com/api/v2/center/<center_id>
+{{cookie}}
+
+### Get media betwen given dates for specified dependents
+POST https://mybrightday.brighthorizons.com/api/v2/dependent/memories/media?start_date=YYYY-MM-DD&end_date=YYYY-MM-DD
+{{cookie}}
+
+["<dependent_id>"]
+
+### Get a report for a dependent on a given day
+GET https://mybrightday.brighthorizons.com/api/v2/dependent/<dependent_id>/daily_report/YYYY-MM-DD
+{{cookie}}
+
+### Download the media
+GET https://mybrightday.brighthorizons.com/remote/v1/file_attachment?key=<attachment_id> 
+{{cookie}}

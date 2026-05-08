@@ -1,58 +1,46 @@
 # Daycare Photos
 
-A Go-based tool that automatically downloads daycare photos from Gmail "Daily Report" emails and uploads them to a Google Photos album.
+A tool to automatically download daycare photos from the MyBrightDay API and optionally back them up to Google Photos with accurate EXIF metadata.
 
 ## Getting Started
 
-### 1. Download
-Download the latest binary for your OS from the [Releases](https://github.com/dipesh/daycare-photos/releases) page.
+### Download
+Download the latest binary for your operating system from the [Releases](https://github.com/dipesh/daycare-photos/releases) page.
 
-### 2. Configuration & Authentication
-Initialize the application by running the `init` command:
-
+### Running Commands
+Initialize authentication (MyBrightDay session and optionally Google Photos):
 ```bash
 ./daycare-photos init
+./daycare-photos init --google-photos
 ```
 
-This will:
-1. Create a default `config.yaml` in your current directory (if it doesn't exist).
-2. Open your browser to authorize the application with your Google account.
-
-Once authenticated, edit the `config.yaml` with your Gmail search parameters and photo metadata preferences.
-
-### 3. Run
-On subsequent runs, you can execute the tool directly:
-
+Run the sync (defaults to today):
 ```bash
-# Full run with output
-./daycare-photos --verbose
-
-# Quiet run
-./daycare-photos
+./daycare-photos run
+./daycare-photos run --date -7:0  # Last 7 days
 ```
+
+### Configuration
+Configuration is hierarchical and can be set via flags, environment variables, or a `config.yaml` file.
+
+Key options:
+- `--date`: Date or range (e.g., `YYYY-MM-DD`, `-1` for yesterday, `-7:0` for last 7 days).
+- `--local-directory`: Where to save photos (default: `./photos/`).
+- `--google-photos-enabled`: Enable uploading to Google Photos.
+- `--dry-run`: Preview actions without downloading or uploading.
+
+**Setting up Google Photos**
+Run `init --google-photos` to authenticate. It will prompt for authorization and save your token. By default, it uploads to an album named "Daycare Photos" (customizable via `--google-photos-album-name`).
 
 ## Development
-Compile the binary using the provided Makefile:
-
+Build the binary locally using the Makefile:
 ```bash
-make
+make build
 ```
 
-## Google Cloud Setup
-The distributed binary ships with default Google OAuth credentials. To use your own Google Cloud project instead, point `auth.client_secret_file` in `config.yaml` at a standard Google OAuth JSON file:
-
-```yaml
-auth:
-  client_secret_file: /path/to/client_secret.json
-```
-
-To obtain the JSON:
-
+### Google Cloud Setup
+The distributed binary includes default Google OAuth credentials. To use your own Google Cloud project during development:
 1. Create a project in the [Google Cloud Console](https://console.cloud.google.com/).
-2. Enable the **Gmail API** and **Photos Library API**.
-3. Configure the **OAuth consent screen** (External) and add yourself as a test user.
-4. Add scopes:
-   - `https://www.googleapis.com/auth/gmail.readonly`
-   - `https://www.googleapis.com/auth/photoslibrary.appendonly`
-   - `https://www.googleapis.com/auth/photoslibrary.readonly.appcreateddata`
-5. Create an **OAuth 2.0 Client ID** (Desktop app) and download the JSON.
+2. Enable the **Photos Library API** and configure the OAuth consent screen.
+3. Create an **OAuth 2.0 Client ID** (Desktop app) and download the JSON secret.
+4. Provide the secret via the `google_photos.client_secret` config key (e.g., in `config.yaml` or via the `GOOGLE_PHOTOS_CLIENT_SECRET` environment variable).

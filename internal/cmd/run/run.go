@@ -2,26 +2,82 @@ package run
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"reflect"
 
 	"github.com/dipesh/daycare-photos/internal/app"
+	"github.com/dipesh/daycare-photos/pkg/config"
 	"github.com/spf13/cobra"
 )
 
 var (
 	configPath string
-	dryRun     bool
 )
 
 var Cmd = &cobra.Command{
 	Use:   "run",
-	Short: "Download daycare photos and upload them to Google Photos",
-	Long:  `Search Gmail for daycare report emails, download images, inject EXIF metadata, and upload to Google Photos.`,
+	Short: "Download daycare photos",
+	Long:  `Fetch photos from the MyBrightDay API for a given date, inject EXIF metadata, and save them locally. Optionally upload to Google Photos.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		return app.RunProcess(context.Background(), configPath, dryRun)
+		cfg := &app.RunConfig{}
+		if err := app.LoadConfig(configPath, cfg); err != nil {
+			return err
+		}
+
+		flagsMap := make(map[string]string)
+		fields := config.Analyze(app.NewDefaultRunConfig(), "")
+		for _, f := range fields {
+			if cmd.Flags().Changed(f.FlagName) {
+				if f.Type == reflect.Bool {
+					val, _ := cmd.Flags().GetBool(f.FlagName)
+					flagsMap[f.FlagName] = fmt.Sprintf("%t", val)
+				} else {
+					val, _ := cmd.Flags().GetString(f.FlagName)
+					flagsMap[f.FlagName] = val
+				}
+			}
+		}
+
+		configPath := flagsMap["config"]
+		if configPath == "" {
+			configPath = os.Getenv("CONFIG")
+		}
+		if configPath == "" {
+			configPath = "config.yaml"
+		}
+
+		cfg = &app.RunConfig{}
+		if err := app.LoadConfig(configPath, cfg); err != nil {
+			return err
+		}
+
+		cfg.Resolve(flagsMap)
+		app.SetupLogging(cfg.Logging.Verbose, cfg.Logging.Format)
+
+		return app.RunProcess(context.Background(), cfg)
+
 	},
 }
 
 func init() {
-	Cmd.Flags().StringVarP(&configPath, "config", "c", "config.yaml", "Path to configuration file")
-	Cmd.Flags().BoolVar(&dryRun, "dry-run", false, "Find and process images without uploading")
+	// Dynamically register all configuration fields as flags.
+	fields := config.Analyze(app.NewDefaultRunConfig(), "")
+
+	for _, f := range fields {
+		desc := fmt.Sprintf("%s (env: %s)", f.Description, f.EnvName)
+		if f.Type == reflect.Bool {
+			val := false
+			if v, ok := f.DefaultValue.(bool); ok {
+				val = v
+			}
+			Cmd.Flags().Bool(f.FlagName, val, desc)
+		} else {
+			val := ""
+			if v, ok := f.DefaultValue.(string); ok {
+				val = v
+			}
+			Cmd.Flags().String(f.FlagName, val, desc)
+		}
+	}
 }

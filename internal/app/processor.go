@@ -2,14 +2,11 @@ package app
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"math"
-	"net/http"
 	"time"
 
 	exif "github.com/dsoprea/go-exif/v3"
@@ -23,32 +20,6 @@ type PhotoMeta struct {
 	TimezoneOffset string
 	Latitude       float64
 	Longitude      float64
-}
-
-// downloadImage fetches an image from a URL and returns the raw bytes.
-func downloadImage(ctx context.Context, client *http.Client, imgURL string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imgURL, nil)
-	if err != nil {
-		return nil, fmt.Errorf("creating request: %w", err)
-	}
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("downloading image: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status %d for %s", resp.StatusCode, imgURL)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading image data: %w", err)
-	}
-
-	return data, nil
 }
 
 // convertToJPEG converts image data to JPEG format if it isn't already.
@@ -214,49 +185,4 @@ func setGPSCoordinate(ib *exif.IfdBuilder, tagName string, decimal float64) {
 	}
 
 	_ = ib.SetStandardWithName(tagName, rationals)
-}
-
-// calculatePhotoTime computes the timestamp for a photo based on the email date
-// and the photo's position in the sequence.
-func calculatePhotoTime(emailDate time.Time, photoIndex int, cfg *Config) (time.Time, error) {
-	// Use the email date but replace the time with the configured start hour.
-	year, month, day := emailDate.Date()
-
-	totalMinutes := (photoIndex * cfg.Photo.IntervalMinutes)
-	hour := cfg.Photo.StartHour + totalMinutes/60
-	minute := totalMinutes % 60
-
-	// Parse the timezone offset.
-	offset, err := parseOffsetSeconds(cfg.Photo.TimezoneOffset)
-	if err != nil {
-		return time.Time{}, err
-	}
-	loc := time.FixedZone("Daycare", offset)
-
-	return time.Date(year, month, day, hour, minute, 0, 0, loc), nil
-}
-
-// parseOffsetSeconds converts a timezone offset string like "-08:00" to seconds.
-func parseOffsetSeconds(offset string) (int, error) {
-	if len(offset) < 5 {
-		return 0, fmt.Errorf("invalid offset format: %q", offset)
-	}
-
-	sign := 1
-	if offset[0] == '-' {
-		sign = -1
-	} else if offset[0] != '+' {
-		return 0, fmt.Errorf("offset must start with + or -: %q", offset)
-	}
-
-	var hours, minutes int
-	n, err := fmt.Sscanf(offset[1:], "%d:%d", &hours, &minutes)
-	if err != nil {
-		return 0, fmt.Errorf("parsing offset %q: %w", offset, err)
-	}
-	if n != 2 {
-		return 0, fmt.Errorf("invalid offset format (expected H:M): %q", offset)
-	}
-
-	return sign * (hours*3600 + minutes*60), nil
 }
