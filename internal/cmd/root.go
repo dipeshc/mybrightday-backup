@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"github.com/dipesh/daycare-photos/internal/cmd/config"
 	"github.com/dipesh/daycare-photos/internal/cmd/init"
 	"github.com/dipesh/daycare-photos/internal/cmd/run"
 	"github.com/dipesh/daycare-photos/internal/cmd/version"
@@ -20,6 +21,7 @@ var RootCmd = &cobra.Command{
 }
 
 func init() {
+	RootCmd.AddCommand(config.Cmd)
 	RootCmd.AddCommand(run.Cmd)
 	RootCmd.AddCommand(initcmd.Cmd)
 	RootCmd.AddCommand(version.Cmd)
