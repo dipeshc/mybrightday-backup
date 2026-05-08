@@ -8,16 +8,14 @@ import (
 	"os"
 )
 
-// RunGooglePhotosInit sets up Google Photos credentials for the application.
-func RunGooglePhotosInit(ctx context.Context, cfg *InitConfig) error {
+// GooglePhotosInit sets up Google Photos credentials for the application.
+func GooglePhotosInit(ctx context.Context, cfg *GooglePhotosInitConfig) error {
 	if cfg.GooglePhotos.TokenSecret == "" {
-		// We need a RunConfig-like struct or just adapt buildOAuthConfig to take InitConfig.
-		// Actually, InitConfig has both MyBrightDay and GooglePhotos, so we can just use it.
-		// However, buildOAuthConfig and getOAuthClient are currently typed to *Config.
-		// Let's change them to use an interface or a more generic type if possible.
-		// Or just create a temporary RunConfig.
-		fullCfg := &RunConfig{
-			MyBrightDay:  cfg.MyBrightDay,
+		// We need a DownloadConfig-like struct or just adapt buildOAuthConfig to take GooglePhotosInitConfig.
+		// Actually, GooglePhotosInitConfig has GooglePhotos, so we can just use it.
+		// However, buildOAuthConfig and getOAuthClient are currently typed to *DownloadConfig.
+		// Let's create a temporary DownloadConfig.
+		fullCfg := &DownloadConfig{
 			GooglePhotos: cfg.GooglePhotos,
 		}
 		tok, err := PerformInitAuth(ctx, fullCfg)

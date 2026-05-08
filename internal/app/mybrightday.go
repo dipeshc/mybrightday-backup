@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -55,7 +56,10 @@ type Center struct {
 	} `json:"address"`
 }
 
-var geocodeCache = make(map[string]struct{ lat, lon float64 })
+var (
+	geocodeCache   = make(map[string]struct{ lat, lon float64 })
+	geocodeCacheMu sync.RWMutex
+)
 
 // GeocodeResult is the JSON shape returned by Nominatim.
 type GeocodeResult struct {
@@ -138,9 +142,12 @@ func (c *MyBrightDayClient) GeocodeCenterAddress(ctx context.Context, center *Ce
 }
 
 func (c *MyBrightDayClient) geocode(ctx context.Context, query string) (float64, float64, error) {
+	geocodeCacheMu.RLock()
 	if res, ok := geocodeCache[query]; ok {
+		geocodeCacheMu.RUnlock()
 		return res.lat, res.lon, nil
 	}
+	geocodeCacheMu.RUnlock()
 
 	v := url.Values{}
 	v.Set("format", "json")
@@ -173,7 +180,9 @@ func (c *MyBrightDayClient) geocode(ctx context.Context, query string) (float64,
 	fmt.Sscanf(results[0].Lat, "%f", &lat)
 	fmt.Sscanf(results[0].Lon, "%f", &lon)
 
+	geocodeCacheMu.Lock()
 	geocodeCache[query] = struct{ lat, lon float64 }{lat, lon}
+	geocodeCacheMu.Unlock()
 	return lat, lon, nil
 }
 

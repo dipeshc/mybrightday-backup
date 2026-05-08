@@ -1,10 +1,14 @@
 // Package credential stores the default Google OAuth client credentials in obfuscated form.
 //
-// Obfuscation (AES-256-CTR) prevents the plaintext secret from appearing in the compiled
-// binary, protecting against accidental exposure via binary inspection ("strings ./binary")
-// and automated secret scanners. It is not cryptographic security — the AES key is hardcoded
-// and publicly visible in this file. Anyone with access to the source can recover the
-// plaintext secret by calling Reveal directly.
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+// WARNING: OBFUSCATION ONLY
+// The logic in this package is NOT cryptographic security. It is purely
+// OBFUSCATION intended to prevent the plaintext secret from appearing in the
+// compiled binary (e.g., to deter 'strings' or basic secret scanners).
+//
+// The default client_secret is effectively PUBLIC. The AES key is hardcoded
+// below, making the "encryption" trivial to reverse for anyone with the source.
+// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
 package credential
 
 import (
@@ -17,7 +21,7 @@ import (
 )
 
 // cryptKey is a 32-byte AES-256 key used solely for obfuscation.
-// It is not a secret: its purpose is scanner evasion and eyedrop protection, not security.
+// IT IS NOT A SECRET. Its purpose is scanner evasion, not security.
 var cryptKey = []byte{
 	0x3f, 0xa2, 0x7c, 0x11, 0x58, 0xe4, 0x9d, 0x06,
 	0xb1, 0x4f, 0x23, 0x87, 0xcd, 0x5a, 0x19, 0xe3,
@@ -30,7 +34,7 @@ var cryptKey = []byte{
 const ClientID = "1063275621143-n5l79mj96ni075aiql9ranvjmnubnumu.apps.googleusercontent.com"
 
 // encryptedClientSecret is the Google OAuth client secret in obfuscated form.
-// Generated once with: go run ./tools/obscure <plaintext>
+// IT IS EFFECTIVELY PUBLIC. Generated once with: go run ./tools/obscure <plaintext>
 const encryptedClientSecret = "HMI1wmL8bpb4gE91qlbRiPE4ZYmqp5OUDjqKs0E4Sba3CRwFwElXDtd_xGdz4R6H2jVz"
 
 // ClientSecret returns the plaintext OAuth client secret.

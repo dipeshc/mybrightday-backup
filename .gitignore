@@ -8,5 +8,4 @@ config.yaml
 photos
 
 # Secrets
-*_secret
-*_password
+*secret*

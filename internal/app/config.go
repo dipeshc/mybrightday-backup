@@ -11,10 +11,10 @@ import (
 
 // LoggingConfig holds common configuration properties for all commands.
 type LoggingConfig struct {
-	// Format sets the log output format (text or json).
-	Format string `yaml:"format" desc:"Log output format (text or json)"`
-	// Verbose enables detailed logging.
-	Verbose bool `yaml:"verbose" desc:"Enable verbose logging"`
+	// Format sets the log output format (text-simple, text-full, or json).
+	Format string `yaml:"format" desc:"Log output format (text-simple, text-full, or json)"`
+	// Level sets the log level (DEBUG, INFO, WARN, ERROR).
+	Level string `yaml:"level" desc:"Log level (DEBUG, INFO, WARN, ERROR)"`
 }
 
 // MyBrightDayConfig holds connection settings for the MyBrightDay API.
@@ -42,7 +42,7 @@ type GooglePhotosConfig struct {
 // LocalConfig holds settings for local photo storage.
 type LocalConfig struct {
 	// Enabled enables saving photos locally.
-	Enabled bool `yaml:"enabled" desc:"Enable saving photos locally"`
+	Enabled *bool `yaml:"enabled" desc:"Enable saving photos locally"`
 	// Directory is the root directory where photos will be saved.
 	Directory string `yaml:"directory" desc:"Directory where photos will be saved"`
 }
@@ -53,8 +53,8 @@ type LocationOverrideConfig struct {
 	Longitude float64 `yaml:"longitude" desc:"Manual GPS longitude override"`
 }
 
-// RunConfig is the configuration structure for the 'run' command.
-type RunConfig struct {
+// DownloadConfig is the configuration structure for the 'download' command.
+type DownloadConfig struct {
 	Logging          LoggingConfig           `yaml:"logging"`
 	Date             string                  `yaml:"date" desc:"Date or range to fetch photos for (YYYY-MM-DD, -1, +1, -1:+1)"`
 	DryRun           bool                    `yaml:"dry_run" desc:"Find and process images without saving or uploading"`
@@ -64,10 +64,9 @@ type RunConfig struct {
 	LocationOverride *LocationOverrideConfig `yaml:"location_override,omitempty"`
 }
 
-// InitConfig is the configuration structure for the 'init' command.
-type InitConfig struct {
+// GooglePhotosInitConfig is the configuration structure for the 'google-photos-init' command.
+type GooglePhotosInitConfig struct {
 	Logging      LoggingConfig      `yaml:"logging"`
-	MyBrightDay  MyBrightDayConfig  `yaml:"mybrightday"`
 	GooglePhotos GooglePhotosConfig `yaml:"google_photos"`
 }
 
@@ -77,8 +76,8 @@ type VersionConfig struct {
 }
 
 // Resolve applies hierarchical resolution to all configuration fields based on struct tags.
-func (c *RunConfig) Resolve(flags map[string]string) {
-	config.ResolveStruct(reflect.ValueOf(c).Elem(), "", flags)
+func (c *DownloadConfig) Resolve(flags map[string]string) {
+	config.ResolveStruct(reflect.ValueOf(c).Elem(), "", "", flags)
 
 	if c.LocationOverride != nil && c.LocationOverride.Latitude == 0 && c.LocationOverride.Longitude == 0 {
 		c.LocationOverride = nil
@@ -88,14 +87,14 @@ func (c *RunConfig) Resolve(flags map[string]string) {
 }
 
 // Resolve applies hierarchical resolution to all configuration fields based on struct tags.
-func (c *InitConfig) Resolve(flags map[string]string) {
-	config.ResolveStruct(reflect.ValueOf(c).Elem(), "", flags)
+func (c *GooglePhotosInitConfig) Resolve(flags map[string]string) {
+	config.ResolveStruct(reflect.ValueOf(c).Elem(), "", "", flags)
 	c.ApplyDefaults()
 }
 
 // Resolve applies hierarchical resolution to all configuration fields based on struct tags.
 func (c *VersionConfig) Resolve(flags map[string]string) {
-	config.ResolveStruct(reflect.ValueOf(c).Elem(), "", flags)
+	config.ResolveStruct(reflect.ValueOf(c).Elem(), "", "", flags)
 }
 
 // LoadConfig reads and parses a YAML configuration file into the target struct.
@@ -116,17 +115,27 @@ func LoadConfig(path string, target interface{}) error {
 	return nil
 }
 
-// NewDefaultRunConfig creates a RunConfig instance with default values populated.
-func NewDefaultRunConfig() *RunConfig {
-	cfg := &RunConfig{}
+// NewDefaultDownloadConfig creates a DownloadConfig instance with default values populated.
+func NewDefaultDownloadConfig() *DownloadConfig {
+	cfg := &DownloadConfig{}
 	cfg.ApplyDefaults()
 	return cfg
 }
 
-// ApplyDefaults sets default values for optional configuration fields in RunConfig.
-func (c *RunConfig) ApplyDefaults() {
+// NewDefaultGooglePhotosInitConfig creates a GooglePhotosInitConfig instance with default values populated.
+func NewDefaultGooglePhotosInitConfig() *GooglePhotosInitConfig {
+	cfg := &GooglePhotosInitConfig{}
+	cfg.ApplyDefaults()
+	return cfg
+}
+
+// ApplyDefaults sets default values for optional configuration fields in DownloadConfig.
+func (c *DownloadConfig) ApplyDefaults() {
 	if c.Logging.Format == "" {
-		c.Logging.Format = "text"
+		c.Logging.Format = "text-simple"
+	}
+	if c.Logging.Level == "" {
+		c.Logging.Level = "INFO"
 	}
 	if c.GooglePhotos.AlbumName == "" {
 		c.GooglePhotos.AlbumName = "Daycare Photos"
@@ -134,33 +143,32 @@ func (c *RunConfig) ApplyDefaults() {
 	if c.Local.Directory == "" {
 		c.Local.Directory = "./photos"
 	}
-	// Default Local.Enabled to true if not already set.
-	// Since we are applying defaults AFTER resolving, we should be careful.
-	// However, the current hierarchical logic sets booleans strictly.
-	// Let's assume if it is false and it wasn't in config or flags, we set it true.
-	// This is hard to detect without more complexity.
-	// For now, let's keep the user's requirement.
-	if !c.Local.Enabled && c.Local.Directory == "./photos" {
-		c.Local.Enabled = true
+	// Default Local.Enabled to true if not explicitly set.
+	if c.Local.Enabled == nil {
+		enabled := true
+		c.Local.Enabled = &enabled
 	}
 	if c.MyBrightDay.BaseURL == "" {
 		c.MyBrightDay.BaseURL = "https://mybrightday.brighthorizons.com"
 	}
 }
 
-// ApplyDefaults sets default values for optional configuration fields in InitConfig.
-func (c *InitConfig) ApplyDefaults() {
+// ApplyDefaults sets default values for optional configuration fields in GooglePhotosInitConfig.
+func (c *GooglePhotosInitConfig) ApplyDefaults() {
 	if c.Logging.Format == "" {
-		c.Logging.Format = "text"
+		c.Logging.Format = "text-simple"
 	}
-	if c.MyBrightDay.BaseURL == "" {
-		c.MyBrightDay.BaseURL = "https://mybrightday.brighthorizons.com"
+	if c.Logging.Level == "" {
+		c.Logging.Level = "INFO"
 	}
 }
 
 // ApplyDefaults sets default values for optional configuration fields in VersionConfig.
 func (c *VersionConfig) ApplyDefaults() {
 	if c.Logging.Format == "" {
-		c.Logging.Format = "text"
+		c.Logging.Format = "text-simple"
+	}
+	if c.Logging.Level == "" {
+		c.Logging.Level = "INFO"
 	}
 }

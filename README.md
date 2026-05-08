@@ -33,9 +33,15 @@ Run `google-photos-init` to authenticate. It will prompt for authorization and s
 
 ## Configuration Reference
 
-Configuration is resolved in priority order: **CLI flag → env var → `FILE__` env var → local file → config file**.
+Configuration is resolved in priority order: **CLI flag → env var → Config Files Directory → config file**.
 
-For any env var `FOO`, setting `FILE__FOO` to a file path reads the value from that file (useful for Docker secrets and CI). As a final fallback the env var name lowercased (e.g. `mybrightday_email`) is tried as a local file path.
+### Config Files Directory (Kubernetes/Docker)
+For environments like Kubernetes or Docker where configuration/secrets are mounted as files, set the `CONFIG_FILES_DIR` environment variable to point to your volume (e.g., `/etc/configs`).
+
+The CLI will automatically look for files matching the configuration hierarchy within that directory. For example, if `CONFIG_FILES_DIR=/etc/configs`, the tool will look for:
+- `/etc/configs/mybrightday/email`
+- `/etc/configs/mybrightday/password`
+- `/etc/configs/google_photos/token_secret`
 
 The flags below apply to the `download` and `config` commands. The `google-photos-init` command accepts the `--config`, `--logging-*`, and `--google-photos-*` flags. The `version` command accepts `--config` and `--logging-*` flags.
 

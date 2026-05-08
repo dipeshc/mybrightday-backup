@@ -34,16 +34,27 @@ func (h *plainHandler) Handle(_ context.Context, r slog.Record) error {
 }
 
 // SetupLogging initializes the global slog logger.
-func SetupLogging(verbose bool, format string) {
+func SetupLogging(levelStr, format string) {
 	level := slog.LevelInfo
-	if verbose {
+	switch strings.ToUpper(levelStr) {
+	case "DEBUG":
 		level = slog.LevelDebug
+	case "INFO":
+		level = slog.LevelInfo
+	case "WARN":
+		level = slog.LevelWarn
+	case "ERROR":
+		level = slog.LevelError
 	}
 
 	var handler slog.Handler
 	switch strings.ToLower(format) {
 	case "json":
 		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})
+	case "text-full":
+		handler = slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: level})
+	case "text-simple", "":
+		handler = &plainHandler{w: os.Stderr, level: level}
 	default:
 		handler = &plainHandler{w: os.Stderr, level: level}
 	}

@@ -17,10 +17,10 @@ type ConfigField struct {
 
 // Analyze traverses a struct and returns its hierarchical configuration fields.
 func Analyze(v interface{}, prefix string) []ConfigField {
-	return analyze(v, prefix, true)
+	return analyze(v, prefix, "", true)
 }
 
-func analyze(v interface{}, prefix string, isRoot bool) []ConfigField {
+func analyze(v interface{}, prefix string, flagPrefix string, isRoot bool) []ConfigField {
 	var fields []ConfigField
 
 	// Prepend the virtual 'config' field only at the actual root of the analysis.
@@ -67,13 +67,21 @@ func analyze(v interface{}, prefix string, isRoot bool) []ConfigField {
 		}
 
 		key := tagName
+		cleanTagName := strings.ReplaceAll(tagName, "_", "")
+		flagName := cleanTagName
+
 		if isInline {
 			key = prefix
+			flagName = flagPrefix
 		} else if prefix != "" {
 			if tagName != "" {
 				key = prefix + "_" + tagName
+				if flagPrefix != "" {
+					flagName = flagPrefix + "." + cleanTagName
+				}
 			} else {
 				key = prefix
+				flagName = flagPrefix
 			}
 		}
 
@@ -89,14 +97,14 @@ func analyze(v interface{}, prefix string, isRoot bool) []ConfigField {
 		}
 
 		if innerVal.Kind() == reflect.Struct {
-			fields = append(fields, analyze(innerVal.Interface(), key, false)...)
+			fields = append(fields, analyze(innerVal.Interface(), key, flagName, false)...)
 			continue
 		}
 
 		fields = append(fields, ConfigField{
 			YamlKey:      key,
 			EnvName:      strings.ToUpper(key),
-			FlagName:     strings.ReplaceAll(key, "_", "-"),
+			FlagName:     flagName,
 			Description:  desc,
 			Type:         field.Type.Kind(),
 			DefaultValue: fieldVal.Interface(),

@@ -31,10 +31,10 @@ func parseDateString(d string) (string, error) {
 	return d, nil
 }
 
-// RunProcess fetches photos from the MyBrightDay API for the given date (or range) and saves them locally.
+// Download fetches photos from the MyBrightDay API for the given date (or range) and saves them locally.
 // If googlePhotos is true, it also uploads them to Google Photos.
 // If date is empty it defaults to today. date can be a single date (YYYY-MM-DD) or a range (YYYY-MM-DD:YYYY-MM-DD).
-func RunProcess(ctx context.Context, cfg *RunConfig) error {
+func Download(ctx context.Context, cfg *DownloadConfig) error {
 	if cfg.MyBrightDay.Email == "" || cfg.MyBrightDay.Password == "" {
 		return errors.New("mybrightday_email and mybrightday_password are required — set them via flag, env var, file, or config.yaml")
 	}
@@ -168,7 +168,7 @@ func RunProcess(ctx context.Context, cfg *RunConfig) error {
 		if cfg.GooglePhotos.Enabled && uploadedIDs[item.AttachmentID] {
 			alreadyProcessed = true
 		}
-		if cfg.Local.Enabled && !cfg.DryRun {
+		if cfg.Local.Enabled != nil && *cfg.Local.Enabled && !cfg.DryRun {
 			if _, err := os.Stat(localPath); err == nil {
 				alreadyProcessed = true
 			}
@@ -217,7 +217,7 @@ func RunProcess(ctx context.Context, cfg *RunConfig) error {
 			continue
 		}
 
-		if cfg.Local.Enabled {
+		if cfg.Local.Enabled != nil && *cfg.Local.Enabled {
 			if cfg.DryRun {
 				slog.Info("[DRY RUN] Would save photo locally", "path", localPath)
 			} else {

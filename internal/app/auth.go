@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -255,7 +256,6 @@ func AuthenticateMyBrightDay(ctx context.Context, email, password string) (strin
 	// Extract the session cookie
 	sessionCookie := ""
 	destURL := resp.Request.URL
-	slog.Debug("Final MBD session URL", "url", destURL.String())
 
 	for _, c := range jar.Cookies(destURL) {
 		if c.Name == "session" {
@@ -273,7 +273,7 @@ func AuthenticateMyBrightDay(ctx context.Context, email, password string) (strin
 
 // buildOAuthConfig returns an OAuth2 config using the client_secret JSON string if provided,
 // otherwise falls back to the obfuscated credentials embedded in the binary.
-func buildOAuthConfig(cfg *RunConfig) (*oauth2.Config, error) {
+func buildOAuthConfig(cfg *DownloadConfig) (*oauth2.Config, error) {
 	if cfg.GooglePhotos.ClientSecret != "" {
 		oauthCfg, err := google.ConfigFromJSON([]byte(cfg.GooglePhotos.ClientSecret), oauthScopes...)
 		if err != nil {
@@ -297,7 +297,7 @@ var oauthScopes = []string{
 
 // getOAuthClient creates an authenticated HTTP client using OAuth2.
 // It requires a valid token to exist, otherwise it returns an error.
-func getOAuthClient(ctx context.Context, cfg *RunConfig) (*http.Client, error) {
+func getOAuthClient(ctx context.Context, cfg *DownloadConfig) (*http.Client, error) {
 	oauthCfg, err := buildOAuthConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -317,7 +317,7 @@ func getOAuthClient(ctx context.Context, cfg *RunConfig) (*http.Client, error) {
 }
 
 // PerformInitAuth performs the interactive authorization flow and returns the obtained token.
-func PerformInitAuth(ctx context.Context, cfg *RunConfig) (*oauth2.Token, error) {
+func PerformInitAuth(ctx context.Context, cfg *DownloadConfig) (*oauth2.Token, error) {
 	oauthCfg, err := buildOAuthConfig(cfg)
 	if err != nil {
 		return nil, err
@@ -390,7 +390,8 @@ func getTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token,
 		server.Shutdown(shutdownCtx)
 	}()
 
-	authURL := config.AuthCodeURL("state-token", oauth2.AccessTypeOffline)
+	state := generateRandomState()
+	authURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline)
 	slog.Info("Opening browser for authorization...")
 	if err := openBrowser(authURL); err != nil {
 		slog.Error("Failed to open browser", "error", err)
@@ -411,6 +412,14 @@ func getTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token,
 	case <-time.After(5 * time.Minute):
 		return nil, fmt.Errorf("timeout waiting for authorization")
 	}
+}
+
+func generateRandomState() string {
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		return "state-fallback"
+	}
+	return hex.EncodeToString(b)
 }
 
 // openBrowser opens the specified URL in the user's default browser.

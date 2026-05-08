@@ -15,11 +15,11 @@ import (
 
 // Cmd prints the resolved run configuration as YAML. Flags, environment variables,
 // and the config file are all applied before output, so the result matches what
-// 'run' would use for the same inputs.
+// 'download' would use for the same inputs.
 var Cmd = &cobra.Command{
 	Use:   "config",
-	Short: "Print the resolved run configuration as YAML",
-	Long: `Load and resolve the run configuration from file, environment variables,
+	Short: "Print the resolved download configuration as YAML",
+	Long: `Load and resolve the download configuration from file, environment variables,
 and flags, then print the result as YAML to standard output.
 
 Useful for generating a config.yaml for the first time:
@@ -27,7 +27,7 @@ Useful for generating a config.yaml for the first time:
   mbdb config > config.yaml`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		flagsMap := make(map[string]string)
-		fields := pkgconfig.Analyze(app.NewDefaultRunConfig(), "")
+		fields := pkgconfig.Analyze(app.NewDefaultDownloadConfig(), "")
 		for _, f := range fields {
 			if cmd.Flags().Changed(f.FlagName) {
 				if f.Type == reflect.Bool {
@@ -45,7 +45,7 @@ Useful for generating a config.yaml for the first time:
 			configPath = "config.yaml"
 		}
 
-		cfg := &app.RunConfig{}
+		cfg := &app.DownloadConfig{}
 		if err := app.LoadConfig(configPath, cfg); err != nil {
 			return err
 		}
@@ -61,10 +61,10 @@ Useful for generating a config.yaml for the first time:
 	},
 }
 
-// init registers all run configuration fields as flags on Cmd, mirroring the
-// run command so users can override individual values before printing.
+// init registers all download configuration fields as flags on Cmd, mirroring the
+// download command so users can override individual values before printing.
 func init() {
-	fields := pkgconfig.Analyze(app.NewDefaultRunConfig(), "")
+	fields := pkgconfig.Analyze(app.NewDefaultDownloadConfig(), "")
 	for _, f := range fields {
 		desc := fmt.Sprintf("%s (env: %s)", f.Description, f.EnvName)
 		if f.Type == reflect.Bool {

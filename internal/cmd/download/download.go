@@ -17,7 +17,7 @@ var Cmd = &cobra.Command{
 	Long:  `Fetch photos from the MyBrightDay API for a given date, inject EXIF metadata, and save them locally. Optionally upload to Google Photos.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		flagsMap := make(map[string]string)
-		fields := config.Analyze(app.NewDefaultRunConfig(), "")
+		fields := config.Analyze(app.NewDefaultDownloadConfig(), "")
 		for _, f := range fields {
 			if cmd.Flags().Changed(f.FlagName) {
 				if f.Type == reflect.Bool {
@@ -38,20 +38,20 @@ var Cmd = &cobra.Command{
 			configPath = "config.yaml"
 		}
 
-		cfg := &app.RunConfig{}
+		cfg := &app.DownloadConfig{}
 		if err := app.LoadConfig(configPath, cfg); err != nil {
 			return err
 		}
 
 		cfg.Resolve(flagsMap)
-		app.SetupLogging(cfg.Logging.Verbose, cfg.Logging.Format)
+		app.SetupLogging(cfg.Logging.Level, cfg.Logging.Format)
 
-		return app.RunProcess(context.Background(), cfg)
+		return app.Download(context.Background(), cfg)
 	},
 }
 
 func init() {
-	fields := config.Analyze(app.NewDefaultRunConfig(), "")
+	fields := config.Analyze(app.NewDefaultDownloadConfig(), "")
 
 	for _, f := range fields {
 		desc := fmt.Sprintf("%s (env: %s)", f.Description, f.EnvName)

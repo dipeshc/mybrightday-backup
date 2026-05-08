@@ -12,12 +12,13 @@ import (
 )
 
 var Cmd = &cobra.Command{
-	Use:   "google-photos-init",
-	Short: "Initialize Google Photos authentication",
-	Long:  `Set up the required credentials for Google Photos. It will prompt for authorization and save your token.`,
+	Use:     "google-photos-init",
+	Aliases: []string{"init"},
+	Short:   "Initialize Google Photos authentication",
+	Long:    `Set up the required credentials for Google Photos. It will prompt for authorization and save your token.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		flagsMap := make(map[string]string)
-		fields := config.Analyze(&app.InitConfig{}, "")
+		fields := config.Analyze(app.NewDefaultGooglePhotosInitConfig(), "")
 		for _, f := range fields {
 			if cmd.Flags().Changed(f.FlagName) {
 				if f.Type == reflect.Bool {
@@ -38,27 +39,35 @@ var Cmd = &cobra.Command{
 			configPath = "config.yaml"
 		}
 
-		cfg := &app.InitConfig{}
+		cfg := app.NewDefaultGooglePhotosInitConfig()
 		if err := app.LoadConfig(configPath, cfg); err != nil {
 			return err
 		}
 
 		cfg.Resolve(flagsMap)
-		app.SetupLogging(cfg.Logging.Verbose, cfg.Logging.Format)
+		app.SetupLogging(cfg.Logging.Level, cfg.Logging.Format)
 
-		return app.RunGooglePhotosInit(context.Background(), cfg)
+		return app.GooglePhotosInit(context.Background(), cfg)
 	},
 }
 
 func init() {
 	// Dynamically register all configuration fields as flags.
-	fields := config.Analyze(&app.InitConfig{}, "")
+	fields := config.Analyze(app.NewDefaultGooglePhotosInitConfig(), "")
 	for _, f := range fields {
 		desc := fmt.Sprintf("%s (env: %s)", f.Description, f.EnvName)
 		if f.Type == reflect.Bool {
-			Cmd.Flags().Bool(f.FlagName, false, desc)
+			val := false
+			if v, ok := f.DefaultValue.(bool); ok {
+				val = v
+			}
+			Cmd.Flags().Bool(f.FlagName, val, desc)
 		} else {
-			Cmd.Flags().String(f.FlagName, "", desc)
+			val := ""
+			if v, ok := f.DefaultValue.(string); ok {
+				val = v
+			}
+			Cmd.Flags().String(f.FlagName, val, desc)
 		}
 	}
 }
