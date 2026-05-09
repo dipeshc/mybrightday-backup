@@ -82,23 +82,35 @@ func PerformInitAuth(ctx context.Context, cfg Config) (*oauth2.Token, error) {
 }
 
 // Init performs the interactive Google Photos OAuth2 flow and saves the token to disk.
+// The token is written to {CONFIG_FILES_DIR}/google_photos/token_secret, which matches
+// the path that the config resolution system reads from automatically.
 func Init(ctx context.Context, cfg Config) error {
-	if cfg.TokenSecret == "" {
-		tok, err := PerformInitAuth(ctx, cfg)
-		if err != nil {
-			return fmt.Errorf("google photos authentication: %w", err)
-		}
-		data, err := json.Marshal(tok)
-		if err != nil {
-			return fmt.Errorf("serializing google token: %w", err)
-		}
-		if err := os.WriteFile("google_photos_token_secret", data, 0600); err != nil {
-			return fmt.Errorf("saving google token: %w", err)
-		}
-		slog.Info("Google token saved to google_photos_token_secret")
-	} else {
+	if cfg.TokenSecret != "" {
 		slog.Info("Google token already configured")
+		return nil
 	}
+
+	tok, err := PerformInitAuth(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("google photos authentication: %w", err)
+	}
+	data, err := json.Marshal(tok)
+	if err != nil {
+		return fmt.Errorf("serializing google token: %w", err)
+	}
+
+	configDir := os.Getenv("CONFIG_FILES_DIR")
+	if configDir == "" {
+		configDir = "config"
+	}
+	tokenPath := filepath.Join(configDir, "google_photos", "token_secret")
+	if err := os.MkdirAll(filepath.Dir(tokenPath), 0700); err != nil {
+		return fmt.Errorf("creating config directory: %w", err)
+	}
+	if err := os.WriteFile(tokenPath, data, 0600); err != nil {
+		return fmt.Errorf("saving google token: %w", err)
+	}
+	slog.Info("Google token saved", "path", tokenPath)
 	return nil
 }
 

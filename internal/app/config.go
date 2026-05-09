@@ -52,7 +52,7 @@ func NewDefaultConfig() *Config {
 
 // Resolve applies hierarchical resolution (flags > env > secrets dir > yaml) to all fields.
 func (c *Config) Resolve(flags map[string]string) {
-	appconfig.ResolveStruct(reflect.ValueOf(c).Elem(), "", "", flags)
+	appconfig.ResolveStruct(reflect.ValueOf(c).Elem(), "", "", "", flags)
 
 	// Clear a location override that was never actually populated.
 	if c.LocationOverride != nil && c.LocationOverride.Latitude == 0 && c.LocationOverride.Longitude == 0 {

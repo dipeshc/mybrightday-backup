@@ -8,17 +8,31 @@ Configuration values are resolved in the following priority order:
 
 1.  **CLI Flags**: Highest priority. (e.g., `--mybrightday.email`)
 2.  **Environment Variables**: Upper-case version of the configuration key. (e.g., `MYBRIGHTDAY_EMAIL`)
-3.  **Config Files Directory**: Useful for Kubernetes Secrets or Docker Compose. If `CONFIG_FILES_DIR` is set, the tool looks for files matching the key structure. (e.g., `MYBRIGHTDAY_PASSWORD` -> `$CONFIG_FILES_DIR/mybrightday/password`)
+3.  **Config Files Directory**: The tool looks for files at `./config/<section>/<key>` by default. Override the base directory by setting `CONFIG_FILES_DIR`. (e.g., `mybrightday.password` -> `./config/mybrightday/password`)
 4.  **Configuration File**: YAML file (default: `config.yaml`).
 5.  **Defaults**: Hardcoded default values in the application.
 
-### Config Files Directory (Kubernetes/Docker)
+### Config Files Directory
 
-For environments where configuration or secrets are mounted as individual files (like Kubernetes Secrets), you can set the `CONFIG_FILES_DIR` environment variable to point to the mount path.
+The config files directory is always active. It defaults to `./config/` relative to the working directory and can be overridden with the `CONFIG_FILES_DIR` environment variable.
 
-The application automatically maps configuration keys to a directory structure. For example, if `CONFIG_FILES_DIR=/etc/configs`:
-- `mybrightday.email` (key: `mybrightday_email`) -> `/etc/configs/mybrightday/email`
-- `google_photos.token_secret` (key: `google_photos_token_secret`) -> `/etc/configs/google_photos/token_secret`
+Configuration keys are mapped to files by converting the nested YAML structure into a directory path — the section name is preserved as-is, and each nesting level is a subdirectory:
+
+| YAML key | Config file path |
+|---|---|
+| `mybrightday.email` | `./config/mybrightday/email` |
+| `mybrightday.password` | `./config/mybrightday/password` |
+| `google_photos.token_secret` | `./config/google_photos/token_secret` |
+
+The `./config/` directory is listed in `.gitignore` to prevent secrets from being accidentally committed.
+
+To use a different directory (e.g. a Kubernetes Secret mount path):
+
+```bash
+CONFIG_FILES_DIR=/etc/secrets ./mbdb --googlephotos.enabled
+```
+
+In this case the tool would read `google_photos.token_secret` from `/etc/secrets/google_photos/token_secret`.
 
 ---
 

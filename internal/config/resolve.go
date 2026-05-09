@@ -10,7 +10,10 @@ import (
 
 // ResolveValue implements hierarchical configuration lookup.
 // Priority: CLI Flag > Env Var > Secrets Directory > Config Value.
-func ResolveValue(key string, flagValue string, configValue string) string {
+// filePath is the slash-separated path used for the secrets directory lookup
+// (e.g. "google_photos/token_secret"), distinct from key which is used for
+// the env var lookup (e.g. "GOOGLE_PHOTOS_TOKEN_SECRET").
+func ResolveValue(key string, filePath string, flagValue string, configValue string) string {
 	if flagValue != "" {
 		return flagValue
 	}
@@ -20,22 +23,22 @@ func ResolveValue(key string, flagValue string, configValue string) string {
 		return val
 	}
 
-	if configDir := os.Getenv("CONFIG_FILES_DIR"); configDir != "" {
-		// Map the config key (e.g., mybrightday_password) to a directory structure
-		// (e.g., mybrightday/password) inside the config files directory.
-		configRelPath := strings.ReplaceAll(key, "_", string(filepath.Separator))
-		configPath := filepath.Join(configDir, configRelPath)
-
-		if b, err := os.ReadFile(configPath); err == nil {
-			return strings.TrimSpace(string(b))
-		}
+	configDir := os.Getenv("CONFIG_FILES_DIR")
+	if configDir == "" {
+		configDir = "config"
+	}
+	if b, err := os.ReadFile(filepath.Join(configDir, filePath)); err == nil {
+		return strings.TrimSpace(string(b))
 	}
 
 	return configValue
 }
 
 // ResolveStruct recursively resolves configuration values using reflection based on yaml tags.
-func ResolveStruct(v reflect.Value, prefix string, flagPrefix string, flags map[string]string) {
+// pathPrefix tracks the slash-separated file path (e.g. "google_photos") separately from
+// prefix which tracks the underscore-separated env key prefix (e.g. "google_photos").
+// They diverge at each nesting level: key uses "_", file path uses "/".
+func ResolveStruct(v reflect.Value, prefix string, pathPrefix string, flagPrefix string, flags map[string]string) {
 	t := v.Type()
 	for i := 0; i < v.NumField(); i++ {
 		fieldValue := v.Field(i)
@@ -57,21 +60,24 @@ func ResolveStruct(v reflect.Value, prefix string, flagPrefix string, flags map[
 		}
 
 		key := tagName
+		filePath := tagName
 		cleanTagName := strings.ReplaceAll(tagName, "_", "")
 		flagKey := cleanTagName
 
 		if isInline {
 			key = prefix
+			filePath = pathPrefix
 			flagKey = flagPrefix
 		} else if prefix != "" {
 			key = prefix + "_" + tagName
+			filePath = pathPrefix + "/" + tagName
 			if flagPrefix != "" {
 				flagKey = flagPrefix + "." + cleanTagName
 			}
 		}
 
 		if fieldValue.Kind() == reflect.Struct {
-			ResolveStruct(fieldValue, key, flagKey, flags)
+			ResolveStruct(fieldValue, key, filePath, flagKey, flags)
 			continue
 		}
 
@@ -80,7 +86,7 @@ func ResolveStruct(v reflect.Value, prefix string, flagPrefix string, flags map[
 				fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
 			}
 			if fieldValue.Elem().Kind() == reflect.Struct {
-				ResolveStruct(fieldValue.Elem(), key, flagKey, flags)
+				ResolveStruct(fieldValue.Elem(), key, filePath, flagKey, flags)
 			}
 			continue
 		}
@@ -100,7 +106,7 @@ func ResolveStruct(v reflect.Value, prefix string, flagPrefix string, flags map[
 			}
 		}
 
-		resolvedStr := ResolveValue(key, flags[flagKey], configStr)
+		resolvedStr := ResolveValue(key, filePath, flags[flagKey], configStr)
 
 		if resolvedStr != "" {
 			if fieldValue.Kind() == reflect.String {

@@ -42,7 +42,9 @@ This will:
 1.  Open your web browser to the Google authorization page.
 2.  Prompt you to grant the required permissions.
 3.  Receive an authorization code via a temporary local server.
-4.  Exchange the code for an OAuth2 token and save it to `google_photos_token_secret` in the current directory.
+4.  Exchange the code for an OAuth2 token and save it to `./config/google_photos/token_secret`.
+
+The token file is automatically picked up on subsequent runs — no additional configuration is needed. The `./config/` directory is gitignored so the token is never accidentally committed.
 
 ---
 

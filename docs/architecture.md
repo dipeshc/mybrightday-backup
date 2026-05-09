@@ -154,10 +154,10 @@ If the backend needs its own CLI subcommand (like `google-photos init`), add a `
 For any configuration value, the priority is:
 
 ```
-CLI flag  >  Env var  >  $CONFIG_FILES_DIR/<key>  >  config.yaml  >  default
+CLI flag  >  Env var  >  config/<section>/<key>  >  config.yaml  >  default
 ```
 
-This is implemented in `internal/config/resolve.go:ResolveValue`.
+The config files directory defaults to `./config/` and can be overridden with `CONFIG_FILES_DIR`. The path is derived by preserving the YAML section name and using `/` as the nesting separator — `google_photos.token_secret` maps to `./config/google_photos/token_secret`. This is implemented in `internal/config/resolve.go:ResolveValue`.
 
 ### How Defaults Work
 
@@ -181,11 +181,11 @@ Rather than hand-coding every flag, the commands use `config.Analyze()` to intro
 
 Flag names are derived from YAML tag names with underscores removed and dots as separators for nesting:
 
-| YAML key | Env var | Flag |
-|----------|---------|------|
-| `google_photos.token_secret` | `GOOGLE_PHOTOS_TOKEN_SECRET` | `--googlephotos.tokensecret` |
-| `local.enabled` | `LOCAL_ENABLED` | `--local.enabled` |
-| `dry_run` | `DRY_RUN` | `--dryrun` |
+| YAML key | Env var | Config file path | Flag |
+|----------|---------|------------------|------|
+| `google_photos.token_secret` | `GOOGLE_PHOTOS_TOKEN_SECRET` | `config/google_photos/token_secret` | `--googlephotos.tokensecret` |
+| `local.enabled` | `LOCAL_ENABLED` | `config/local/enabled` | `--local.enabled` |
+| `dry_run` | `DRY_RUN` | `config/dry_run` | `--dryrun` |
 
 ---
 

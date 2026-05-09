@@ -60,7 +60,7 @@ func initCmd() *cobra.Command {
 				return err
 			}
 
-			appconfig.ResolveStruct(reflect.ValueOf(cfg).Elem(), "", "", flagsMap)
+			appconfig.ResolveStruct(reflect.ValueOf(cfg).Elem(), "", "", "", flagsMap)
 			logging.Setup(cfg.Logging)
 
 			return Init(context.Background(), cfg.GooglePhotos)
