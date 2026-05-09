@@ -3,7 +3,7 @@ name: Daily Sync
 on:
   # Runs at 02:00 UTC (7 PM US/Pacific).
   schedule:
-    - cron: '0 19 * * *'
+    - cron: '0 2 * * *'
   # Also allows manual triggering
   workflow_dispatch:
 
