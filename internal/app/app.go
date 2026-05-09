@@ -146,6 +146,11 @@ func Download(ctx context.Context, cfg *Config) error {
 
 	slog.Info("Found media items", "start_date", startDate, "end_date", endDate, "count", len(mediaItems))
 
+	countsByDate := make(map[string]int)
+	for _, item := range mediaItems {
+		countsByDate[item.CaptureTime.In(location).Format("2006-01-02")]++
+	}
+
 	totalPhotos := 0
 	currentProcessingDate := ""
 
@@ -156,7 +161,7 @@ func Download(ctx context.Context, cfg *Config) error {
 
 		if captureDate != currentProcessingDate {
 			currentProcessingDate = captureDate
-			slog.Info("Processing media for date", "date", currentProcessingDate)
+			slog.Info("Processing media for date", "date", currentProcessingDate, "count", countsByDate[currentProcessingDate])
 		}
 
 		filename := fmt.Sprintf("daycare_%s_%s.jpg", captureDate, item.AttachmentID)
