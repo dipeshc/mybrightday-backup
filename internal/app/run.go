@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -152,14 +153,25 @@ func Download(ctx context.Context, cfg *DownloadConfig) error {
 		return fmt.Errorf("getting media for %s to %s: %w", startDate, endDate, err)
 	}
 
+	sort.Slice(mediaItems, func(i, j int) bool {
+		return mediaItems[i].CaptureTime.Before(mediaItems[j].CaptureTime)
+	})
+
 	slog.Info("Found media items", "start_date", startDate, "end_date", endDate, "count", len(mediaItems))
 
 	totalPhotos := 0
 	skippedPhotos := 0
+	currentProcessingDate := ""
 
 	for _, item := range mediaItems {
 		photoTime := item.CaptureTime.In(location)
 		captureDate := photoTime.Format("2006-01-02")
+
+		if captureDate != currentProcessingDate {
+			currentProcessingDate = captureDate
+			slog.Info("Processing media for date", "date", currentProcessingDate)
+		}
+
 		filename := fmt.Sprintf("daycare_%s_%s.jpg", captureDate, item.AttachmentID)
 		outputDir := filepath.Join(cfg.Local.Directory, captureDate)
 		localPath := filepath.Join(outputDir, filename)
