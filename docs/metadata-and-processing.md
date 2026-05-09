@@ -6,7 +6,7 @@ To ensure your backed-up photos are as useful as possible, the tool performs aut
 
 Photos downloaded from MyBrightDay are processed to ensure compatibility and enriched with EXIF metadata.
 
-1.  **JPEG Normalization**: The tool ensures all images are in JPEG format. If a photo is downloaded as a PNG, it is automatically converted to a high-quality JPEG (Quality 95).
+1.  **JPEG Normalization**: The tool ensures all images are in JPEG format. If a photo is downloaded as a PNG, it is automatically converted to a high-quality JPEG (Quality 100).
 2.  **EXIF Injection**: The tool injects a standard set of EXIF tags into the JPEG header. This allows photo management software (like Apple Photos, Google Photos, or Adobe Lightroom) to correctly sort and map the images.
 
 ---
@@ -40,15 +40,16 @@ The tool uses the [Nominatim OpenStreetMap API](https://nominatim.openstreetmap.
 
 ### Manual Override
 
-If the automatic geocoding is incorrect, or if you prefer to use a specific location, you can manually override the coordinates using the following configuration options:
+If the automatic geocoding is incorrect, or if you prefer to use a specific location, you can manually override the coordinates:
 
 ```bash
-./mbdb download --location-override.latitude 40.7128 --location-override.longitude -74.0060
+./mbdb --locationoverride.latitude 40.7128 --locationoverride.longitude -74.0060
 ```
 
-*   **Flag**: `--location-override.latitude` / `--location-override.longitude`
-*   **Env Var**: `LOCATION_OVERRIDE_LATITUDE` / `LOCATION_OVERRIDE_LONGITUDE`
-*   **YAML Key**: `location_override.latitude` / `location_override.longitude`
+| Flag | Env Var | YAML Key |
+|------|---------|----------|
+| `--locationoverride.latitude` | `LOCATION_OVERRIDE_LATITUDE` | `location_override.latitude` |
+| `--locationoverride.longitude` | `LOCATION_OVERRIDE_LONGITUDE` | `location_override.longitude` |
 
 ---
 

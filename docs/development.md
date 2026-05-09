@@ -4,13 +4,28 @@ This guide provides technical information for developers working on the MyBright
 
 ## Project Structure
 
-*   `cmd/mbdb/`: The main entry point for the CLI application.
-*   `internal/app/`: Core application logic, including authentication, configuration, and the backup workflow.
-*   `internal/cmd/`: Implementation of the Cobra CLI commands.
-*   `internal/credential/`: Handles obfuscated default Google OAuth credentials.
-*   `pkg/config/`: A reusable reflection-based configuration library.
-*   `docs/`: Project documentation.
-*   `tools/obscure/`: A development utility for obfuscating secrets.
+```
+mybrightday-backup/
+├── cmd/mbdb/           # Binary entry point — delegates to internal/cmd
+├── docs/               # Project documentation
+├── internal/
+│   ├── app/            # Root Config, Download orchestration, Version variable
+│   ├── cmd/            # Cobra root command (the download action)
+│   ├── config/         # Reflection-based config analysis, resolution, and YAML loading
+│   ├── logging/        # Logging config and slog setup
+│   ├── mybrightday/    # MyBrightDay auth flow, API client, and domain config
+│   ├── processor/      # Image conversion (PNG→JPEG) and EXIF metadata injection
+│   └── storage/
+│       ├── storage.go          # Storage interface, Photo type, BaseConfig
+│       ├── local/              # Local filesystem storage backend
+│       └── googlephotos/       # Google Photos storage backend
+│           ├── credential/     # Obfuscated default OAuth credentials
+│           └── cmd.go          # "google-photos" cobra command group
+├── tools/obscure/      # Dev utility: obfuscate/reveal credential values
+└── Makefile
+```
+
+For a deeper explanation of how these packages interact, see [Architecture & Repo Structure](architecture.md).
 
 ## Building the Project
 
@@ -45,9 +60,11 @@ The project uses a `Makefile` to simplify common tasks.
 
 The binary includes default Google OAuth credentials to simplify the getting started experience. To prevent these from appearing as plaintext in the compiled binary (deterring basic secret scanners), they are obfuscated.
 
+The credential code lives in `internal/storage/googlephotos/credential/credential.go`.
+
 ### Obfuscation Tool
 
-The `tools/obscure` utility is used to generate the obfuscated values stored in `internal/credential/credential.go`.
+The `tools/obscure` utility is used to generate the obfuscated values stored in the credential package.
 
 > **Note**: This is **NOT** cryptographic security. The AES key is hardcoded in the source code. It is purely for obfuscation to avoid plain-text detection.
 
@@ -63,10 +80,11 @@ To verify an existing obfuscated value:
 go run ./tools/obscure -reveal "YOUR_OBFUSCATED_VALUE"
 ```
 
-After generating a new obfuscated value, update the `encryptedClientSecret` constant in `internal/credential/credential.go`.
+After generating a new obfuscated value, update the `encryptedClientSecret` constant in `internal/storage/googlephotos/credential/credential.go`.
 
 ## Code Conventions
 
 *   **Error Handling**: Use the `%w` verb to wrap errors with context.
-*   **Logging**: Use `slog` for structured logging.
-*   **Configuration**: Add new configuration options to the structs in `internal/app/config.go`. Use struct tags to define YAML keys (`yaml:"key_name"`) and descriptions (`desc:"description"`).
+*   **Logging**: Use `slog` for structured logging throughout.
+*   **Configuration**: Each domain package owns its config struct (e.g., `mybrightday.Config`, `local.Config`). The root `app.Config` in `internal/app/config.go` aggregates them. Use struct tags to define YAML keys (`yaml:"key_name"`) and flag descriptions (`desc:"description"`).
+*   **Storage Backends**: New storage destinations should be added under `internal/storage/` as a new subdirectory. Implement the `storage.Storage` interface and embed `storage.BaseConfig` for the `Enabled` field. See [Architecture & Repo Structure](architecture.md) for the full pattern.

@@ -27,7 +27,7 @@ jobs:
           MYBRIGHTDAY_PASSWORD: ${{ secrets.MYBRIGHTDAY_PASSWORD }}
           GOOGLE_PHOTOS_TOKEN_SECRET: ${{ secrets.GOOGLE_PHOTOS_TOKEN_SECRET }}
         run: |
-          ./mbdb download \
+          ./mbdb \
             --date "-7:+3" \
             --local.enabled=false \
             --googlephotos.enabled=true \

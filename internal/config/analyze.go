@@ -87,7 +87,7 @@ func analyze(v interface{}, prefix string, flagPrefix string, isRoot bool) []Con
 
 		desc := field.Tag.Get("desc")
 
-		// Recurse into structs or pointers to structs
+		// Recurse into structs or pointers to structs.
 		innerVal := fieldVal
 		if innerVal.Kind() == reflect.Ptr {
 			if innerVal.IsNil() {

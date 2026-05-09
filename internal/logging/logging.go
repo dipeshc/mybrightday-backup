@@ -1,4 +1,4 @@
-package app
+package logging
 
 import (
 	"context"
@@ -33,10 +33,10 @@ func (h *plainHandler) Handle(_ context.Context, r slog.Record) error {
 	return nil
 }
 
-// SetupLogging initializes the global slog logger.
-func SetupLogging(levelStr, format string) {
+// Setup initializes the global slog logger from a Config.
+func Setup(cfg Config) {
 	level := slog.LevelInfo
-	switch strings.ToUpper(levelStr) {
+	switch strings.ToUpper(cfg.Level) {
 	case "DEBUG":
 		level = slog.LevelDebug
 	case "INFO":
@@ -48,7 +48,7 @@ func SetupLogging(levelStr, format string) {
 	}
 
 	var handler slog.Handler
-	switch strings.ToLower(format) {
+	switch strings.ToLower(cfg.Format) {
 	case "json":
 		handler = slog.NewJSONHandler(os.Stderr, &slog.HandlerOptions{Level: level})
 	case "text-full":

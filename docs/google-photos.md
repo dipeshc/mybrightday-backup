@@ -35,14 +35,14 @@ The application uses OAuth 2.0 to interact with the Google Photos API. It reques
 To authenticate the application with your Google account, run the following command:
 
 ```bash
-./mbdb google-photos-init
+./mbdb google-photos init
 ```
 
 This will:
 1.  Open your web browser to the Google authorization page.
 2.  Prompt you to grant the required permissions.
 3.  Receive an authorization code via a temporary local server.
-4.  Exchange the code for an OAuth2 token and save it to your configuration.
+4.  Exchange the code for an OAuth2 token and save it to `google_photos_token_secret` in the current directory.
 
 ---
 
@@ -57,8 +57,8 @@ By default, the distributed binary includes embedded credentials for a default G
     *   Go to **Credentials** -> **Create Credentials** -> **OAuth 2.0 Client ID**.
     *   Select **Desktop app** as the application type.
 5.  **Download JSON**: Download the client secret JSON file.
-6.  **Provide to Tool**: Provide the JSON content to the tool using the `--google-photos.client-secret` flag or the `GOOGLE_PHOTOS_CLIENT_SECRET` environment variable.
+6.  **Provide to Tool**: Provide the JSON content to the tool using the `--googlephotos.clientsecret` flag or the `GOOGLE_PHOTOS_CLIENT_SECRET` environment variable.
 
 ```bash
-./mbdb download --google-photos.client-secret "$(cat client_secret.json)"
+./mbdb --googlephotos.clientsecret "$(cat client_secret.json)"
 ```

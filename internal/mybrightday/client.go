@@ -1,4 +1,4 @@
-package app
+package mybrightday
 
 import (
 	"bytes"
@@ -19,8 +19,8 @@ const (
 	captureTimeLayout = "2006-01-02T15:04:05"
 )
 
-// MyBrightDayClient makes authenticated requests to the MyBrightDay API.
-type MyBrightDayClient struct {
+// Client makes authenticated requests to the MyBrightDay API.
+type Client struct {
 	httpClient *http.Client
 	baseURL    string
 	cookie     string
@@ -30,17 +30,6 @@ type MyBrightDayClient struct {
 type MediaItem struct {
 	AttachmentID string
 	CaptureTime  time.Time // UTC
-}
-
-// guardianProfile is the JSON shape returned by GET /user/profile.
-type guardianProfile struct {
-	ID string `json:"id"`
-}
-
-// dependent is the JSON shape of a single entry from GET /dependents/guardian/{id}.
-type dependent struct {
-	ID     string `json:"id"`
-	Center string `json:"center"`
 }
 
 // Center represents information about a daycare center.
@@ -56,10 +45,16 @@ type Center struct {
 	} `json:"address"`
 }
 
-var (
-	geocodeCache   = make(map[string]struct{ lat, lon float64 })
-	geocodeCacheMu sync.RWMutex
-)
+// guardianProfile is the JSON shape returned by GET /user/profile.
+type guardianProfile struct {
+	ID string `json:"id"`
+}
+
+// dependent is the JSON shape of a single entry from GET /dependents/guardian/{id}.
+type dependent struct {
+	ID     string `json:"id"`
+	Center string `json:"center"`
+}
 
 // GeocodeResult is the JSON shape returned by Nominatim.
 type GeocodeResult struct {
@@ -74,12 +69,17 @@ type mediaEntry struct {
 	EntryType    string `json:"entry_type"`
 }
 
-// NewMyBrightDayClient creates an authenticated MyBrightDay API client.
-func NewMyBrightDayClient(baseURL, cookie string) *MyBrightDayClient {
+var (
+	geocodeCache   = make(map[string]struct{ lat, lon float64 })
+	geocodeCacheMu sync.RWMutex
+)
+
+// NewClient creates an authenticated MyBrightDay API client.
+func NewClient(baseURL, cookie string) *Client {
 	if cookie != "" && !strings.HasPrefix(cookie, "session=") {
 		cookie = "session=" + cookie
 	}
-	return &MyBrightDayClient{
+	return &Client{
 		httpClient: &http.Client{Timeout: 30 * time.Second},
 		baseURL:    baseURL,
 		cookie:     cookie,
@@ -87,7 +87,7 @@ func NewMyBrightDayClient(baseURL, cookie string) *MyBrightDayClient {
 }
 
 // GetCenterInfo fetches center information from the MyBrightDay API.
-func (c *MyBrightDayClient) GetCenterInfo(ctx context.Context, centerID string) (*Center, error) {
+func (c *Client) GetCenterInfo(ctx context.Context, centerID string) (*Center, error) {
 	url := fmt.Sprintf("%s/api/v2/center/%s", c.baseURL, centerID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -120,10 +120,10 @@ func (c *MyBrightDayClient) GetCenterInfo(ctx context.Context, centerID string) 
 }
 
 // GeocodeCenterAddress converts a center's address to latitude and longitude using Nominatim.
-func (c *MyBrightDayClient) GeocodeCenterAddress(ctx context.Context, center *Center) (float64, float64, error) {
+func (c *Client) GeocodeCenterAddress(ctx context.Context, center *Center) (float64, float64, error) {
 	addr := center.Address
 
-	// Attempt 1: Using the street address
+	// Attempt 1: Using the street address.
 	queryAddr := fmt.Sprintf("%s, %s, %s %s, USA",
 		addr.AddressLine1, addr.City, addr.State, addr.PostalCode)
 	lat, lon, err := c.geocode(ctx, queryAddr)
@@ -131,7 +131,7 @@ func (c *MyBrightDayClient) GeocodeCenterAddress(ctx context.Context, center *Ce
 		return lat, lon, nil
 	}
 
-	// Attempt 2: Fallback to using the center name
+	// Attempt 2: Fallback to using the center name.
 	queryName := fmt.Sprintf("%s, %s, %s %s, USA",
 		center.Name, addr.City, addr.State, addr.PostalCode)
 	slog.Debug("Geocoding address failed, falling back to center name",
@@ -141,7 +141,7 @@ func (c *MyBrightDayClient) GeocodeCenterAddress(ctx context.Context, center *Ce
 	return c.geocode(ctx, queryName)
 }
 
-func (c *MyBrightDayClient) geocode(ctx context.Context, query string) (float64, float64, error) {
+func (c *Client) geocode(ctx context.Context, query string) (float64, float64, error) {
 	geocodeCacheMu.RLock()
 	if res, ok := geocodeCache[query]; ok {
 		geocodeCacheMu.RUnlock()
@@ -199,7 +199,7 @@ func FormatOffset(seconds int) string {
 }
 
 // GetDependentIDs returns the IDs of all dependents for the authenticated guardian and their associated center IDs.
-func (c *MyBrightDayClient) GetDependentIDs(ctx context.Context) ([]string, map[string]string, error) {
+func (c *Client) GetDependentIDs(ctx context.Context) ([]string, map[string]string, error) {
 	profile, err := c.getProfile(ctx)
 	if err != nil {
 		return nil, nil, fmt.Errorf("fetching profile: %w", err)
@@ -220,8 +220,8 @@ func (c *MyBrightDayClient) GetDependentIDs(ctx context.Context) ([]string, map[
 }
 
 // GetMediaForDateRange returns all photo attachments for the given dependents on the given date range.
-// dates must be in YYYY-MM-DD format. capture_time values are in UTC.
-func (c *MyBrightDayClient) GetMediaForDateRange(ctx context.Context, dependentIDs []string, startDate, endDate string) ([]MediaItem, error) {
+// Dates must be in YYYY-MM-DD format. capture_time values are in UTC.
+func (c *Client) GetMediaForDateRange(ctx context.Context, dependentIDs []string, startDate, endDate string) ([]MediaItem, error) {
 	body, err := json.Marshal(dependentIDs)
 	if err != nil {
 		return nil, fmt.Errorf("marshaling dependent IDs: %w", err)
@@ -281,7 +281,7 @@ func (c *MyBrightDayClient) GetMediaForDateRange(ctx context.Context, dependentI
 }
 
 // DownloadMedia downloads the image bytes for the given attachment ID.
-func (c *MyBrightDayClient) DownloadMedia(ctx context.Context, attachmentID string) ([]byte, error) {
+func (c *Client) DownloadMedia(ctx context.Context, attachmentID string) ([]byte, error) {
 	url := fmt.Sprintf("%s?key=%s", mediaDownloadURL, attachmentID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -309,7 +309,7 @@ func (c *MyBrightDayClient) DownloadMedia(ctx context.Context, attachmentID stri
 }
 
 // getProfile fetches the authenticated user's guardian profile.
-func (c *MyBrightDayClient) getProfile(ctx context.Context) (*guardianProfile, error) {
+func (c *Client) getProfile(ctx context.Context) (*guardianProfile, error) {
 	url := c.baseURL + "/api/v2/user/profile"
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -342,7 +342,7 @@ func (c *MyBrightDayClient) getProfile(ctx context.Context) (*guardianProfile, e
 }
 
 // getDependents returns all dependents for the given guardian ID.
-func (c *MyBrightDayClient) getDependents(ctx context.Context, guardianID string) ([]dependent, error) {
+func (c *Client) getDependents(ctx context.Context, guardianID string) ([]dependent, error) {
 	url := fmt.Sprintf("%s/api/v2/dependents/guardian/%s", c.baseURL, guardianID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)

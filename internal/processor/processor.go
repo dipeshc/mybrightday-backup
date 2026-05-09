@@ -1,4 +1,4 @@
-package app
+package processor
 
 import (
 	"bytes"
@@ -22,8 +22,8 @@ type PhotoMeta struct {
 	Longitude      float64
 }
 
-// convertToJPEG converts image data to JPEG format if it isn't already.
-func convertToJPEG(data []byte) ([]byte, error) {
+// ConvertToJPEG converts image data to JPEG format if it isn't already.
+func ConvertToJPEG(data []byte) ([]byte, error) {
 	// Check magic bytes to detect format.
 	if len(data) >= 2 && data[0] == 0xFF && data[1] == 0xD8 {
 		// Already JPEG.
@@ -56,8 +56,8 @@ func encodeJPEG(img image.Image) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// addEXIF injects EXIF metadata (date/time, GPS, camera info) into JPEG data.
-func addEXIF(jpegData []byte, meta PhotoMeta) ([]byte, error) {
+// AddEXIF injects EXIF metadata (date/time, GPS, camera info) into JPEG data.
+func AddEXIF(jpegData []byte, meta PhotoMeta) ([]byte, error) {
 	jmp := jpegstructure.NewJpegMediaParser()
 
 	mc, err := jmp.ParseBytes(jpegData)
