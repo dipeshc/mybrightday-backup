@@ -27,7 +27,10 @@ type Photo struct {
 
 // Storage is the interface implemented by all storage backends.
 // Save is called once per photo; each backend is responsible for its own
-// deduplication and dry-run behaviour.
+// deduplication and dry-run behaviour. One-time per-run setup (e.g creating
+// remote resources, ensuring a local directory exists, etc) is performed by
+// each backend's constructor — backends are fully ready to use the moment New
+// returns.
 type Storage interface {
 	Save(ctx context.Context, photo Photo) error
 }

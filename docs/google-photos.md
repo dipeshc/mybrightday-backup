@@ -30,6 +30,11 @@ The application uses OAuth 2.0 to interact with the Google Photos API. It reques
 *   `photoslibrary.appendonly`: Allows the app to upload photos and create media items/albums.
 *   `photoslibrary.readonly.appcreateddata`: Allows the app to see and search for media items that *it* created.
 
+The OAuth flow is split in two:
+
+*   **One-time setup** (`mbdb google-photos init`) drives the interactive browser flow with `access_type=offline` and `prompt=consent`, then persists **only** the long-lived refresh token to disk.
+*   **Each run** uses the refresh token to mint a short-lived access token in memory. The access token is never written to disk.
+
 ### Initial Setup
 
 To authenticate the application with your Google account, run the following command:
@@ -40,11 +45,13 @@ To authenticate the application with your Google account, run the following comm
 
 This will:
 1.  Open your web browser to the Google authorization page.
-2.  Prompt you to grant the required permissions.
+2.  Prompt you to grant the required permissions (the consent screen is always shown so a refresh token is always issued).
 3.  Receive an authorization code via a temporary local server.
-4.  Exchange the code for an OAuth2 token and save it to `./config/google_photos/token_secret`.
+4.  Exchange the code for an OAuth2 token, extract the refresh token, and save it to `./config/google_photos/refresh_token` as a plain string.
 
-The token file is automatically picked up on subsequent runs — no additional configuration is needed. The `./config/` directory is gitignored so the token is never accidentally committed.
+The refresh token file is automatically picked up on subsequent runs — no additional configuration is needed. The `./config/` directory is gitignored so the token is never accidentally committed.
+
+> **Refresh token expiry**: For the refresh token to remain valid indefinitely, the OAuth consent screen for the Google Cloud project must be in **In production** status. Refresh tokens issued by projects in **Testing** mode expire after 7 days and the init flow must be re-run.
 
 ---
 

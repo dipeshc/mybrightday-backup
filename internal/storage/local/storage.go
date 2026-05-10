@@ -16,9 +16,17 @@ type LocalStorage struct {
 	dryRun bool
 }
 
-// New creates a LocalStorage for the given configuration.
-func New(cfg Config, dryRun bool) *LocalStorage {
-	return &LocalStorage{cfg: cfg, dryRun: dryRun}
+// New creates a LocalStorage and ensures the configured root directory exists.
+// Per-date subdirectories are created on demand inside Save, since the set of
+// dates is not known until media discovery completes. In dry-run mode no
+// directory is created.
+func New(cfg Config, dryRun bool) (*LocalStorage, error) {
+	if !dryRun {
+		if err := os.MkdirAll(cfg.Directory, 0755); err != nil {
+			return nil, fmt.Errorf("creating local storage directory %q: %w", cfg.Directory, err)
+		}
+	}
+	return &LocalStorage{cfg: cfg, dryRun: dryRun}, nil
 }
 
 // Save writes the photo to {Directory}/{YYYY-MM-DD}/{filename}.

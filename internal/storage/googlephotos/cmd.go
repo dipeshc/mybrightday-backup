@@ -43,7 +43,7 @@ func initCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init",
 		Short: "Initialize Google Photos authentication",
-		Long:  "Set up the required credentials for Google Photos. Opens a browser for authorization and saves the token to google_photos_token_secret.",
+		Long:  "Set up the required credentials for Google Photos. Opens a browser for authorization and saves the OAuth refresh token to google_photos/refresh_token.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			flagsMap := collectFlags(cmd, appconfig.Analyze(newDefaultInitConfig(), ""))
 

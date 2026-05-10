@@ -89,6 +89,8 @@ type Storage interface {
 
 `Save` is called once per photo after it has been downloaded and processed. Each backend is fully responsible for its own deduplication and dry-run behaviour — the orchestration layer in `app.Download()` just iterates the backends and calls `Save`.
 
+One-time per-run setup (acquiring an access token, creating remote resources such as an album, pre-fetching a deduplication set, ensuring a local directory exists) is performed by each backend's constructor. Constructors return an error on failure, so problems surface in `app.Download()` before the photo loop begins rather than mid-iteration. A backend is fully ready to use the moment its `New` returns.
+
 ### The Photo Type
 
 ```go
@@ -130,7 +132,7 @@ local:
 
 1.  Create `internal/storage/<name>/` with at minimum:
     - `config.go`: a `Config` struct embedding `storage.BaseConfig`
-    - `storage.go`: a struct implementing `Storage` with a `New(cfg Config, dryRun bool) *<Name>Storage` constructor and a `Save` method
+    - `storage.go`: a struct implementing `Storage` with a `New(...) (*<Name>Storage, error)` constructor that performs any one-time setup, and a `Save` method. If setup needs network I/O, take a `context.Context` as the first argument.
 2.  In `internal/app/config.go`, add a field to `Config`:
     ```go
     MyNewBackend newbackend.Config `yaml:"my_new_backend"`
@@ -139,7 +141,11 @@ local:
 3.  In `internal/app/app.go`, append to the `stores` slice:
     ```go
     if cfg.MyNewBackend.Enabled {
-        stores = append(stores, newbackend.New(cfg.MyNewBackend, cfg.DryRun))
+        b, err := newbackend.New(cfg.MyNewBackend, cfg.DryRun)
+        if err != nil {
+            return fmt.Errorf("initialising my new backend: %w", err)
+        }
+        stores = append(stores, b)
     }
     ```
 
@@ -157,7 +163,7 @@ For any configuration value, the priority is:
 CLI flag  >  Env var  >  config/<section>/<key>  >  config.yaml  >  default
 ```
 
-The config files directory defaults to `./config/` and can be overridden with `CONFIG_FILES_DIR`. The path is derived by preserving the YAML section name and using `/` as the nesting separator — `google_photos.token_secret` maps to `./config/google_photos/token_secret`. This is implemented in `internal/config/resolve.go:ResolveValue`.
+The config files directory defaults to `./config/` and can be overridden with `CONFIG_FILES_DIR`. The path is derived by preserving the YAML section name and using `/` as the nesting separator — `google_photos.refresh_token` maps to `./config/google_photos/refresh_token`. This is implemented in `internal/config/resolve.go:ResolveValue`.
 
 ### How Defaults Work
 
@@ -183,7 +189,7 @@ Flag names are derived from YAML tag names with underscores removed and dots as 
 
 | YAML key | Env var | Config file path | Flag |
 |----------|---------|------------------|------|
-| `google_photos.token_secret` | `GOOGLE_PHOTOS_TOKEN_SECRET` | `config/google_photos/token_secret` | `--googlephotos.tokensecret` |
+| `google_photos.refresh_token` | `GOOGLE_PHOTOS_REFRESH_TOKEN` | `config/google_photos/refresh_token` | `--googlephotos.refreshtoken` |
 | `local.enabled` | `LOCAL_ENABLED` | `config/local/enabled` | `--local.enabled` |
 | `dry_run` | `DRY_RUN` | `config/dry_run` | `--dryrun` |
 

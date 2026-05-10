@@ -82,15 +82,22 @@ func Download(ctx context.Context, cfg *Config) error {
 		return fmt.Errorf("mybrightday authentication: %w", err)
 	}
 
-	// Build storage backends.
+	// Build storage backends. Each constructor performs its own one-time
+	// setup (directory creation, OAuth client, album lookup, dedup pre-fetch)
+	// and returns an error on failure, so problems surface here rather than
+	// mid-loop.
 	var stores []storage.Storage
 	if cfg.Local.Enabled {
-		stores = append(stores, local.New(cfg.Local, cfg.DryRun))
+		ls, err := local.New(cfg.Local, cfg.DryRun)
+		if err != nil {
+			return fmt.Errorf("initialising local storage: %w", err)
+		}
+		stores = append(stores, ls)
 	}
 	if cfg.GooglePhotos.Enabled {
 		gp, err := googlephotos.New(ctx, cfg.GooglePhotos, cfg.DryRun, startTime, endTime)
 		if err != nil {
-			return err
+			return fmt.Errorf("initialising google photos storage: %w", err)
 		}
 		stores = append(stores, gp)
 	}

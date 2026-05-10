@@ -25,7 +25,7 @@ jobs:
           # Inject repository secrets into environment variables
           MYBRIGHTDAY_EMAIL: ${{ secrets.MYBRIGHTDAY_EMAIL }}
           MYBRIGHTDAY_PASSWORD: ${{ secrets.MYBRIGHTDAY_PASSWORD }}
-          GOOGLE_PHOTOS_TOKEN_SECRET: ${{ secrets.GOOGLE_PHOTOS_TOKEN_SECRET }}
+          GOOGLE_PHOTOS_REFRESH_TOKEN: ${{ secrets.GOOGLE_PHOTOS_REFRESH_TOKEN }}
         run: |
           ./mbdb \
             --date "-7:+3" \

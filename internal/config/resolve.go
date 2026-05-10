@@ -11,8 +11,8 @@ import (
 // ResolveValue implements hierarchical configuration lookup.
 // Priority: CLI Flag > Env Var > Secrets Directory > Config Value.
 // filePath is the slash-separated path used for the secrets directory lookup
-// (e.g. "google_photos/token_secret"), distinct from key which is used for
-// the env var lookup (e.g. "GOOGLE_PHOTOS_TOKEN_SECRET").
+// (e.g. "google_photos/refresh_token"), distinct from key which is used for
+// the env var lookup (e.g. "GOOGLE_PHOTOS_REFRESH_TOKEN").
 func ResolveValue(key string, filePath string, flagValue string, configValue string) string {
 	if flagValue != "" {
 		return flagValue

@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net"
@@ -46,27 +45,26 @@ func buildOAuthConfig(cfg Config) (*oauth2.Config, error) {
 }
 
 // getOAuthClient creates an authenticated HTTP client using OAuth2.
-// It requires a valid token to exist in cfg.TokenSecret.
+// It requires a refresh token to exist in cfg.RefreshToken; the access token
+// is minted on first use by the oauth2 library and is never persisted.
 func getOAuthClient(ctx context.Context, cfg Config) (*http.Client, error) {
 	oauthCfg, err := buildOAuthConfig(cfg)
 	if err != nil {
 		return nil, err
 	}
 
-	if cfg.TokenSecret == "" {
+	if cfg.RefreshToken == "" {
 		binaryName := filepath.Base(os.Args[0])
-		return nil, fmt.Errorf("token_secret missing — run '%s google-photos init' to authenticate", binaryName)
+		return nil, fmt.Errorf("refresh_token missing — run '%s google-photos init' to authenticate", binaryName)
 	}
 
-	tok := &oauth2.Token{}
-	if err := json.Unmarshal([]byte(cfg.TokenSecret), tok); err != nil {
-		return nil, fmt.Errorf("decoding token_secret JSON: %w", err)
-	}
-
+	tok := &oauth2.Token{RefreshToken: cfg.RefreshToken}
 	return oauthCfg.Client(ctx, tok), nil
 }
 
-// PerformInitAuth performs the interactive authorization flow and returns the obtained token.
+// PerformInitAuth performs the interactive authorization flow and returns the
+// obtained token. The returned token is guaranteed to contain a non-empty
+// RefreshToken on success.
 func PerformInitAuth(ctx context.Context, cfg Config) (*oauth2.Token, error) {
 	oauthCfg, err := buildOAuthConfig(cfg)
 	if err != nil {
@@ -78,15 +76,21 @@ func PerformInitAuth(ctx context.Context, cfg Config) (*oauth2.Token, error) {
 		return nil, fmt.Errorf("obtaining token: %w", err)
 	}
 
+	if tok.RefreshToken == "" {
+		return nil, fmt.Errorf("Google did not return a refresh token; ensure the OAuth consent screen grants offline access")
+	}
+
 	return tok, nil
 }
 
-// Init performs the interactive Google Photos OAuth2 flow and saves the token to disk.
-// The token is written to {CONFIG_FILES_DIR}/google_photos/token_secret, which matches
-// the path that the config resolution system reads from automatically.
+// Init performs the interactive Google Photos OAuth2 flow and saves the
+// refresh token to disk. The refresh token is written as a plain string to
+// {CONFIG_FILES_DIR}/google_photos/refresh_token, which matches the path that
+// the config resolution system reads from automatically. The access token is
+// not persisted — it is minted on demand from the refresh token at run time.
 func Init(ctx context.Context, cfg Config) error {
-	if cfg.TokenSecret != "" {
-		slog.Info("Google token already configured")
+	if cfg.RefreshToken != "" {
+		slog.Info("Google refresh token already configured")
 		return nil
 	}
 
@@ -94,23 +98,19 @@ func Init(ctx context.Context, cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("google photos authentication: %w", err)
 	}
-	data, err := json.Marshal(tok)
-	if err != nil {
-		return fmt.Errorf("serializing google token: %w", err)
-	}
 
 	configDir := os.Getenv("CONFIG_FILES_DIR")
 	if configDir == "" {
 		configDir = "config"
 	}
-	tokenPath := filepath.Join(configDir, "google_photos", "token_secret")
+	tokenPath := filepath.Join(configDir, "google_photos", "refresh_token")
 	if err := os.MkdirAll(filepath.Dir(tokenPath), 0700); err != nil {
 		return fmt.Errorf("creating config directory: %w", err)
 	}
-	if err := os.WriteFile(tokenPath, data, 0600); err != nil {
-		return fmt.Errorf("saving google token: %w", err)
+	if err := os.WriteFile(tokenPath, []byte(tok.RefreshToken), 0600); err != nil {
+		return fmt.Errorf("saving google refresh token: %w", err)
 	}
-	slog.Info("Google token saved", "path", tokenPath)
+	slog.Info("Google refresh token saved", "path", tokenPath)
 	return nil
 }
 
@@ -172,7 +172,13 @@ func getTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token,
 	}()
 
 	state := generateRandomState()
-	authURL := config.AuthCodeURL(state, oauth2.AccessTypeOffline)
+	// AccessTypeOffline asks Google to issue a refresh token; prompt=consent
+	// forces the consent screen on every run so a refresh token is always
+	// returned (Google omits it on silent re-authorisations).
+	authURL := config.AuthCodeURL(state,
+		oauth2.AccessTypeOffline,
+		oauth2.SetAuthURLParam("prompt", "consent"),
+	)
 	slog.Info("Opening browser for authorization...")
 	if err := openBrowser(authURL); err != nil {
 		slog.Error("Failed to open browser", "error", err)

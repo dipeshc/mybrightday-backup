@@ -22,7 +22,7 @@ Configuration keys are mapped to files by converting the nested YAML structure i
 |---|---|
 | `mybrightday.email` | `./config/mybrightday/email` |
 | `mybrightday.password` | `./config/mybrightday/password` |
-| `google_photos.token_secret` | `./config/google_photos/token_secret` |
+| `google_photos.refresh_token` | `./config/google_photos/refresh_token` |
 
 The `./config/` directory is listed in `.gitignore` to prevent secrets from being accidentally committed.
 
@@ -32,7 +32,7 @@ To use a different directory (e.g. a Kubernetes Secret mount path):
 CONFIG_FILES_DIR=/etc/secrets ./mbdb --googlephotos.enabled
 ```
 
-In this case the tool would read `google_photos.token_secret` from `/etc/secrets/google_photos/token_secret`.
+In this case the tool would read `google_photos.refresh_token` from `/etc/secrets/google_photos/refresh_token`.
 
 ---
 
@@ -41,7 +41,7 @@ In this case the tool would read `google_photos.token_secret` from `/etc/secrets
 The following tables detail the available configuration options.
 
 > **Flag name convention**: nested config keys use dot notation and underscores are removed.
-> For example, `google_photos.token_secret` becomes `--googlephotos.tokensecret`.
+> For example, `google_photos.refresh_token` becomes `--googlephotos.refreshtoken`.
 
 ### General
 
@@ -83,7 +83,7 @@ The following tables detail the available configuration options.
 | Flag | Env Var | YAML Key | Default | Description |
 |------|---------|----------|---------|-------------|
 | `--googlephotos.enabled` | `GOOGLE_PHOTOS_ENABLED` | `google_photos.enabled` | `false` | Enable uploading to Google Photos |
-| `--googlephotos.tokensecret` | `GOOGLE_PHOTOS_TOKEN_SECRET` | `google_photos.token_secret` | | OAuth2 token JSON (set via `mbdb google-photos init`) |
+| `--googlephotos.refreshtoken` | `GOOGLE_PHOTOS_REFRESH_TOKEN` | `google_photos.refresh_token` | | OAuth2 refresh token (set via `mbdb google-photos init`) |
 | `--googlephotos.clientsecret` | `GOOGLE_PHOTOS_CLIENT_SECRET` | `google_photos.client_secret` | | Custom Google OAuth client secret JSON (overrides embedded credentials) |
 | `--googlephotos.albumname` | `GOOGLE_PHOTOS_ALBUM_NAME` | `google_photos.album_name` | `Daycare Photos` | Album to upload photos to |
 

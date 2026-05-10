@@ -6,9 +6,9 @@ This document explains the internal lifecycle of the `mbdb` command and how the 
 
 The backup process follows a linear execution flow:
 
-1.  **Authentication**: Authenticates with MyBrightDay.
-2.  **Date Resolution**: Parses the requested date or range.
-3.  **Storage Initialisation**: Sets up enabled storage backends (local and/or Google Photos).
+1.  **Date Resolution**: Parses the requested date or range.
+2.  **Authentication**: Authenticates with MyBrightDay.
+3.  **Storage Initialisation**: Constructs and initialises every enabled storage backend (local and/or Google Photos).
 4.  **Context Discovery**: Fetches child (dependent) and daycare center information.
 5.  **Metadata Preparation**: Resolves the center's timezone and GPS coordinates.
 6.  **Media Discovery**: Fetches a list of all media attachments for the resolved date range.
@@ -16,11 +16,7 @@ The backup process follows a linear execution flow:
 
 ---
 
-## 1. Authentication
-
-The tool first logs into MyBrightDay using the provided email and password. This involves a multi-stage flow to exchange Auth0 credentials for a MyBrightDay session cookie.
-
-## 2. Date Resolution
+## 1. Date Resolution
 
 The `--date` flag is flexible. It can be:
 *   **Absolute**: `2024-01-15`
@@ -29,14 +25,18 @@ The `--date` flag is flexible. It can be:
 
 The tool parses these strings into start and end dates.
 
+## 2. Authentication
+
+The tool then logs into MyBrightDay using the provided email and password. This involves a multi-stage flow to exchange Auth0 credentials for a MyBrightDay session cookie.
+
 ## 3. Storage Initialisation
 
-Each enabled storage backend is initialised before any photos are downloaded. Currently supported backends:
+After MyBrightDay authentication and before any per-photo work, every enabled storage backend is constructed. Each constructor performs the backend's one-time setup and returns an error on failure, so credential, network, or filesystem problems surface here rather than mid-loop. Currently supported backends:
 
-*   **Local**: Creates a `LocalStorage` instance pointing at the configured directory.
-*   **Google Photos**: Creates a `GooglePhotosStorage` instance — this authenticates with Google, finds or creates the target album, and pre-fetches the set of already-uploaded attachment IDs for efficient deduplication.
+*   **Local**: Creates the configured root directory if it does not already exist. Per-date subdirectories are still created on demand inside `Save`.
+*   **Google Photos**: Exchanges the persisted refresh token for a short-lived access token, finds or creates the target album, and pre-fetches the set of already-uploaded attachment IDs for efficient deduplication. The access token lives only in memory for the duration of the run.
 
-If a backend is disabled (via `local.enabled: false` or `google_photos.enabled: false`), it is simply not included and has no effect on the run.
+If a backend is disabled (via `local.enabled: false` or `google_photos.enabled: false`), it is simply not constructed and has no effect on the run.
 
 ## 4. Context Discovery
 

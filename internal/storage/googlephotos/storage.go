@@ -11,7 +11,9 @@ import (
 )
 
 // GooglePhotosStorage uploads photos to a Google Photos album.
-// It pre-fetches already-uploaded attachment IDs on construction to avoid duplicates.
+// New mints an access token from the configured refresh token, finds or
+// creates the target album, and pre-fetches the set of attachment IDs already
+// uploaded within the date window so subsequent Save calls can skip duplicates.
 type GooglePhotosStorage struct {
 	client      *http.Client
 	albumID     string
@@ -19,8 +21,8 @@ type GooglePhotosStorage struct {
 	dryRun      bool
 }
 
-// New creates a GooglePhotosStorage instance for the given date range.
-// startDate and endDate are used to pre-fetch the deduplication set from Google Photos.
+// New creates a fully initialised GooglePhotosStorage for the given date range.
+// In dry-run mode the album is looked up but not created.
 func New(ctx context.Context, cfg Config, dryRun bool, startDate, endDate time.Time) (*GooglePhotosStorage, error) {
 	client, err := getOAuthClient(ctx, cfg)
 	if err != nil {
