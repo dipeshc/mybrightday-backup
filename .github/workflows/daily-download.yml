@@ -4,8 +4,15 @@ on:
   # Runs at 02:00 UTC (7 PM US/Pacific).
   schedule:
     - cron: '0 2 * * *'
-  # Also allows manual triggering
+  # Also allows manual triggering. The `date` input optionally overrides the
+  # date range for a single run; leave it blank to fall back to the repository
+  # `DATE` variable, or to the hardcoded default if that is also unset.
   workflow_dispatch:
+    inputs:
+      date:
+        description: 'Override date or date range (YYYY-MM-DD, -N, +N, or -N:+N). Leave blank to use the repository DATE variable, or "-7:+3" if unset.'
+        required: false
+        type: string
 
 jobs:
   download:
@@ -28,7 +35,7 @@ jobs:
           GOOGLE_PHOTOS_REFRESH_TOKEN: ${{ secrets.GOOGLE_PHOTOS_REFRESH_TOKEN }}
         run: |
           ./mbdb \
-            --date "-7:+3" \
+            --date "${{ inputs.date || vars.DATE || '-7:+3' }}" \
             --local.enabled=false \
             --googlephotos.enabled=true \
             --logging.level=DEBUG \
