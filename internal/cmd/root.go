@@ -8,10 +8,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/dipesh/mybrightday-backup/internal/app"
-	appconfig "github.com/dipesh/mybrightday-backup/internal/config"
-	"github.com/dipesh/mybrightday-backup/internal/logging"
-	"github.com/dipesh/mybrightday-backup/internal/storage/googlephotos"
+	"github.com/dipeshc/mybrightday-backup/internal/app"
+	appconfig "github.com/dipeshc/mybrightday-backup/internal/config"
+	"github.com/dipeshc/mybrightday-backup/internal/logging"
+	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos"
 )
 
 var RootCmd = &cobra.Command{

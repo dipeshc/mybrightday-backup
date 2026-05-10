@@ -1,7 +1,7 @@
 .DEFAULT_GOAL := build
 
 VERSION ?= development
-LDFLAGS := -ldflags "-X github.com/dipesh/mybrightday-backup/internal/app.Version=$(VERSION)"
+LDFLAGS := -ldflags "-X github.com/dipeshc/mybrightday-backup/internal/app.Version=$(VERSION)"
 
 .PHONY: build clean tidy fmt
 

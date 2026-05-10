@@ -61,7 +61,7 @@ jobs:
           if [ "${{ matrix.goos }}" = "windows" ]; then
             BINARY=mbdb.exe
           fi
-          go build -ldflags "-X github.com/dipesh/mybrightday-backup/internal/app.Version=${VERSION}" \
+          go build -ldflags "-X github.com/dipeshc/mybrightday-backup/internal/app.Version=${VERSION}" \
             -o build/${BINARY} ./cmd/mbdb
           if [[ "${{ matrix.artifact }}" == *.zip ]]; then
             cd build && zip ../dist/${{ matrix.artifact }} ${BINARY}

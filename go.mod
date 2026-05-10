@@ -1,4 +1,4 @@
-module github.com/dipesh/mybrightday-backup
+module github.com/dipeshc/mybrightday-backup
 
 go 1.25.0
 

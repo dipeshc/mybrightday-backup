@@ -1,6 +1,6 @@
 package googlephotos
 
-import "github.com/dipesh/mybrightday-backup/internal/storage"
+import "github.com/dipeshc/mybrightday-backup/internal/storage"
 
 // Config holds settings for Google Photos storage.
 type Config struct {

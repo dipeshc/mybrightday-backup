@@ -1,6 +1,6 @@
 package local
 
-import "github.com/dipesh/mybrightday-backup/internal/storage"
+import "github.com/dipeshc/mybrightday-backup/internal/storage"
 
 // Config holds settings for local filesystem storage.
 type Config struct {

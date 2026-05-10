@@ -3,12 +3,12 @@ package app
 import (
 	"reflect"
 
-	appconfig "github.com/dipesh/mybrightday-backup/internal/config"
-	"github.com/dipesh/mybrightday-backup/internal/logging"
-	"github.com/dipesh/mybrightday-backup/internal/mybrightday"
-	"github.com/dipesh/mybrightday-backup/internal/storage"
-	"github.com/dipesh/mybrightday-backup/internal/storage/googlephotos"
-	"github.com/dipesh/mybrightday-backup/internal/storage/local"
+	appconfig "github.com/dipeshc/mybrightday-backup/internal/config"
+	"github.com/dipeshc/mybrightday-backup/internal/logging"
+	"github.com/dipeshc/mybrightday-backup/internal/mybrightday"
+	"github.com/dipeshc/mybrightday-backup/internal/storage"
+	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos"
+	"github.com/dipeshc/mybrightday-backup/internal/storage/local"
 )
 
 // LocationOverrideConfig holds manual coordinates used instead of geocoding.

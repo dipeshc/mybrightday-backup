@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	appconfig "github.com/dipesh/mybrightday-backup/internal/config"
-	"github.com/dipesh/mybrightday-backup/internal/logging"
+	appconfig "github.com/dipeshc/mybrightday-backup/internal/config"
+	"github.com/dipeshc/mybrightday-backup/internal/logging"
 )
 
 // initConfig is the combined configuration for the google-photos init subcommand.

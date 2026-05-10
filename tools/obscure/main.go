@@ -11,7 +11,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dipesh/mybrightday-backup/internal/storage/googlephotos/credential"
+	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos/credential"
 )
 
 func main() {

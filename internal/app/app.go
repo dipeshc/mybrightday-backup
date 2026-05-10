@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dipesh/mybrightday-backup/internal/mybrightday"
-	"github.com/dipesh/mybrightday-backup/internal/processor"
-	"github.com/dipesh/mybrightday-backup/internal/storage"
-	"github.com/dipesh/mybrightday-backup/internal/storage/googlephotos"
-	"github.com/dipesh/mybrightday-backup/internal/storage/local"
+	"github.com/dipeshc/mybrightday-backup/internal/mybrightday"
+	"github.com/dipeshc/mybrightday-backup/internal/processor"
+	"github.com/dipeshc/mybrightday-backup/internal/storage"
+	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos"
+	"github.com/dipeshc/mybrightday-backup/internal/storage/local"
 )
 
 // parseDateString parses an absolute (YYYY-MM-DD) or relative (-1, +2, 0) date string.

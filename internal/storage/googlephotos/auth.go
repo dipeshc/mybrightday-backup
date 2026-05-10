@@ -17,7 +17,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
-	"github.com/dipesh/mybrightday-backup/internal/storage/googlephotos/credential"
+	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos/credential"
 )
 
 // oauthScopes defines the Google API scopes needed by this tool.

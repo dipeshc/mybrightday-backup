@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/dipesh/mybrightday-backup/internal/cmd"
+	"github.com/dipeshc/mybrightday-backup/internal/cmd"
 )
 
 func main() {

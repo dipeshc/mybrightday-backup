@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/dipesh/mybrightday-backup/internal/storage"
+	"github.com/dipeshc/mybrightday-backup/internal/storage"
 )
 
 // GooglePhotosStorage uploads photos to a Google Photos album.

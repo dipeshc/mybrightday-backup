@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dipesh/mybrightday-backup/internal/storage"
+	"github.com/dipeshc/mybrightday-backup/internal/storage"
 )
 
 // LocalStorage saves photos to the local filesystem under a date-based directory hierarchy.
