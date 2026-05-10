@@ -1,4 +1,4 @@
-name: Daily Sync
+name: Daily Backup
 
 on:
   # Runs at 02:00 UTC (7 PM US/Pacific).
@@ -15,7 +15,7 @@ on:
         type: string
 
 jobs:
-  download:
+  backup:
     runs-on: ubuntu-latest
     steps:
       - name: Download Latest Release
@@ -27,7 +27,7 @@ jobs:
           tar -xzf mbdb-linux-amd64.tar.gz
           chmod +x mbdb
 
-      - name: Run MyBrightDay Download
+      - name: Run MyBrightDay Backup
         env:
           # Inject repository secrets into environment variables
           MYBRIGHTDAY_EMAIL: ${{ secrets.MYBRIGHTDAY_EMAIL }}
