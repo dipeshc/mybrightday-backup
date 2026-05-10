@@ -31,5 +31,5 @@ jobs:
             --date "-7:+3" \
             --local.enabled=false \
             --googlephotos.enabled=true \
-            --logging.level=INFO \
+            --logging.level=DEBUG \
             --logging.format=text-full
