@@ -37,6 +37,23 @@ Download the latest binary for your operating system from the [Releases](https:/
     ./mbdb --googlephotos.enabled
     ```
 
+### Automated Daily Backup (GitHub Actions)
+
+This repository includes a GitHub Actions workflow to automatically download your photos every day and back them up directly to Google Photos, requiring no local server.
+
+To set this up for your own account:
+1.  **Fork this repository**: Click the "Fork" button at the top right of this page to create your own copy.
+2.  **Get a Google Photos Refresh Token**: Run the initialization command locally to authenticate and generate a refresh token.
+    ```bash
+    ./mbdb google-photos init
+    cat ./config/google_photos/refresh_token
+    ```
+3.  **Add Repository Secrets**: Go to your forked repository's **Settings** > **Secrets and variables** > **Actions** and add the following repository secrets:
+    *   `MYBRIGHTDAY_EMAIL`: Your MyBrightDay login email.
+    *   `MYBRIGHTDAY_PASSWORD`: Your MyBrightDay password.
+    *   `GOOGLE_PHOTOS_REFRESH_TOKEN`: The content of the refresh token file generated in step 2.
+4.  **Enable the Workflow**: Go to the **Actions** tab in your fork, select the "Daily Sync" workflow, and click "Enable workflow". It will now run automatically every day!
+
 ## Configuration Overview
 
 Configuration can be set via CLI flags, environment variables, or a `config.yaml` file. The application follows a strict resolution hierarchy: **CLI Flags → Env Vars → Secret Files → Config File → Defaults**.
