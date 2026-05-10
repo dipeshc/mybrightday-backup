@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/assets/logo.svg" width="200" height="200" alt="MyBrightDay Backup Logo">
+</p>
+
 # MyBrightDay Backup
 
 A tool to automatically backup photos from the MyBrightDay application, with optional upload to Google Photos.

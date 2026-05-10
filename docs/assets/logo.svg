@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" />
+      <stop offset="100%" stop-color="#0369a1" />
+    </linearGradient>
+    <linearGradient id="sun" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fef08a" />
+      <stop offset="100%" stop-color="#f59e0b" />
+    </linearGradient>
+    <filter id="shadow" x="0" y="0" width="120%" height="120%">
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+
+  <!-- Base App Icon Shape -->
+  <rect width="512" height="512" rx="110" fill="url(#bg)" />
+
+  <!-- Sun Base -->
+  <circle cx="256" cy="210" r="75" fill="url(#sun)" filter="url(#shadow)" />
+  
+  <!-- Sun Rays -->
+  <g stroke="url(#sun)" stroke-width="16" stroke-linecap="round">
+    <line x1="256" y1="75" x2="256" y2="105" />
+    <line x1="256" y1="315" x2="256" y2="345" />
+    <line x1="121" y1="210" x2="151" y2="210" />
+    <line x1="361" y1="210" x2="391" y2="210" />
+    <line x1="160" y1="115" x2="181" y2="136" />
+    <line x1="331" y1="284" x2="352" y2="305" />
+    <line x1="160" y1="305" x2="181" y2="284" />
+    <line x1="331" y1="136" x2="352" y2="115" />
+  </g>
+
+  <g filter="url(#shadow)">
+    <!-- Back Photo -->
+    <g transform="rotate(-12 220 300)">
+      <rect x="140" y="230" width="130" height="110" rx="8" fill="#e0f2fe" stroke="#cbd5e1" stroke-width="3"/>
+    </g>
+    <!-- Front Photo -->
+    <g transform="rotate(8 290 320)">
+      <rect x="230" y="250" width="130" height="110" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="3"/>
+      
+      <!-- Landscape inside front photo -->
+      <path d="M 233 357 L 265 310 L 295 345 L 320 357 Z" fill="#7dd3fc" />
+      <path d="M 280 357 L 315 295 L 357 357 Z" fill="#38bdf8" />
+      <circle cx="265" cy="285" r="12" fill="#fcd34d" />
+    </g>
+  </g>
+  
+  <!-- Backup/Download Arrow overlapping the composition slightly -->
+  <g transform="translate(256, 410)">
+    <circle cx="0" cy="0" r="32" fill="#ffffff" filter="url(#shadow)"/>
+    <path d="M 0 -12 L 0 12 M -10 2 L 0 14 L 10 2" stroke="#0369a1" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </g>
+</svg>
