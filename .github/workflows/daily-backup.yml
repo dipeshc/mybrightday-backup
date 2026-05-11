@@ -18,12 +18,23 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Download Latest Release
+      - name: Download Corresponding Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Fetch the latest release for Linux AMD64
-          gh release download --repo ${{ github.repository }} --pattern "*linux-amd64.tar.gz"
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          
+          # Fetch the release tag that ends with the short SHA
+          TAG=$(gh release list --repo ${{ github.repository }} --limit 50 --json tagName -q ".[].tagName" | grep -- "-${SHORT_SHA}$" | head -n 1 || true)
+          
+          if [ -z "$TAG" ]; then
+            echo "Could not find a release for commit $SHORT_SHA. Falling back to latest release."
+            gh release download --repo ${{ github.repository }} --pattern "*linux-amd64.tar.gz"
+          else
+            echo "Downloading release $TAG"
+            gh release download "$TAG" --repo ${{ github.repository }} --pattern "*linux-amd64.tar.gz"
+          fi
+          
           tar -xzf mbdb-linux-amd64.tar.gz
           chmod +x mbdb
 
