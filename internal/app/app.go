@@ -58,8 +58,14 @@ func parseDates(dateStr string) (startDate, endDate string, startTime, endTime t
 		return
 	}
 
-	startTime, _ = time.Parse("2006-01-02", startDate)
-	endTime, _ = time.Parse("2006-01-02", endDate)
+	startTime, err = time.Parse("2006-01-02", startDate)
+	if err != nil {
+		return
+	}
+	endTime, err = time.Parse("2006-01-02", endDate)
+	if err != nil {
+		return
+	}
 	return
 }
 
@@ -81,7 +87,7 @@ func Download(ctx context.Context, cfg *Config) error {
 	}
 	slog.Debug("Processing range", "start_date", startDate, "end_date", endDate)
 
-	slog.Info("Authenticating with MyBrightDay...", "email", cfg.MyBrightDay.Email)
+	slog.Info("Authenticating with MyBrightDay...")
 	cookie, err := mybrightday.Authenticate(ctx, cfg.MyBrightDay.Email, cfg.MyBrightDay.Password)
 	if err != nil {
 		return fmt.Errorf("mybrightday authentication: %w", err)

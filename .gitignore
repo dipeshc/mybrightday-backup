@@ -1,11 +1,11 @@
 # Built binary
-mbdb
+/mbdb
 
 # The configuration file
 config.yaml
 
 # Default config/secrets directory
-config/
+/config/
 
 # The downloaded photos directory
 photos/

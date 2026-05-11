@@ -53,7 +53,7 @@ func Authenticate(ctx context.Context, email, password string) (string, error) {
 	nonce := generateRandomString(16)
 
 	// Stage 1: Start OIDC flow.
-	slog.Debug("Stage 1: Starting Auth0 authorization flow")
+	slog.Debug("Stage 1: Starting Auth0 authorization flow", "email", email)
 	authorizeURL := fmt.Sprintf("https://%s/authorize?client_id=%s&scope=openid+offline_access+profile+email&audience=%s&redirect_uri=%s&response_type=code&response_mode=query&state=%s&nonce=%s&code_challenge=%s&code_challenge_method=S256",
 		ficAuth0Domain, ficClientID, url.QueryEscape(ficAudience), url.QueryEscape(ficRedirectURI), stateOIDC, nonce, codeChallenge)
 
