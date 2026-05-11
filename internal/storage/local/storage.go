@@ -29,31 +29,36 @@ func New(cfg Config, dryRun bool) (*LocalStorage, error) {
 	return &LocalStorage{cfg: cfg, dryRun: dryRun}, nil
 }
 
+// Name returns "local".
+func (s *LocalStorage) Name() string {
+	return "local"
+}
+
 // Save writes the photo to {Directory}/{YYYY-MM-DD}/{filename}.
 // If the file already exists it is skipped. In dry-run mode the write is logged but not performed.
-func (s *LocalStorage) Save(_ context.Context, photo storage.Photo) error {
+func (s *LocalStorage) Save(_ context.Context, photo storage.Photo) (bool, error) {
 	captureDate := photo.CaptureTime.Format("2006-01-02")
 	dir := filepath.Join(s.cfg.Directory, captureDate)
 	path := filepath.Join(dir, photo.Filename)
 
 	if s.dryRun {
 		slog.Info("[DRY RUN] Would save photo locally", "path", path)
-		return nil
+		return false, nil
 	}
 
 	if _, err := os.Stat(path); err == nil {
 		slog.Debug("Skipping already-saved photo", "path", path)
-		return nil
+		return false, nil
 	}
 
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return fmt.Errorf("creating output directory: %w", err)
+		return false, fmt.Errorf("creating output directory: %w", err)
 	}
 
 	if err := os.WriteFile(path, photo.Data, 0644); err != nil {
-		return fmt.Errorf("writing photo: %w", err)
+		return false, fmt.Errorf("writing photo: %w", err)
 	}
 
 	slog.Debug("Saved photo locally", "path", path)
-	return nil
+	return true, nil
 }

@@ -62,12 +62,17 @@ func New(ctx context.Context, cfg Config, dryRun bool, startDate, endDate time.T
 	}, nil
 }
 
+// Name returns "google_photos".
+func (s *GooglePhotosStorage) Name() string {
+	return "google_photos"
+}
+
 // Save uploads the photo to Google Photos, skipping it if already uploaded.
 // In dry-run mode the upload is logged but not performed.
-func (s *GooglePhotosStorage) Save(ctx context.Context, photo storage.Photo) error {
+func (s *GooglePhotosStorage) Save(ctx context.Context, photo storage.Photo) (bool, error) {
 	if s.uploadedIDs[photo.AttachmentID] {
 		slog.Debug("Skipping already-uploaded photo", "id", photo.AttachmentID)
-		return nil
+		return false, nil
 	}
 
 	if s.dryRun {
@@ -75,16 +80,16 @@ func (s *GooglePhotosStorage) Save(ctx context.Context, photo storage.Photo) err
 			"filename", photo.Filename,
 			"size", len(photo.Data),
 			"time", photo.CaptureTime.Format("2006-01-02 15:04:05 -07:00"))
-		return nil
+		return false, nil
 	}
 
 	mediaID, err := uploadToPhotos(ctx, s.client, photo.Data, photo.Filename, s.albumID)
 	if err != nil {
-		return fmt.Errorf("uploading %s: %w", photo.Filename, err)
+		return false, fmt.Errorf("uploading %s: %w", photo.Filename, err)
 	}
 
 	// Track the upload so subsequent calls for the same attachment skip.
 	s.uploadedIDs[photo.AttachmentID] = true
 	slog.Debug("Uploaded photo", "filename", photo.Filename, "mediaID", mediaID)
-	return nil
+	return true, nil
 }

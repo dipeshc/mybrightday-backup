@@ -32,5 +32,13 @@ type Photo struct {
 // each backend's constructor — backends are fully ready to use the moment New
 // returns.
 type Storage interface {
-	Save(ctx context.Context, photo Photo) error
+	// Name returns the identifier for this storage backend (e.g. "local").
+	Name() string
+	// Save is called once per photo; each backend is responsible for its own
+	// deduplication and dry-run behaviour. It returns true if the photo was
+	// newly saved/uploaded, and false if it was skipped (already exists).
+	// One-time per-run setup (e.g creating remote resources, ensuring a local
+	// directory exists, etc) is performed by each backend's constructor —
+	// backends are fully ready to use the moment New returns.
+	Save(ctx context.Context, photo Photo) (bool, error)
 }

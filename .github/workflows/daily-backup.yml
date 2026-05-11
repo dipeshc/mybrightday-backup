@@ -38,5 +38,5 @@ jobs:
             --date "${{ inputs.date || vars.DATE || '-7:+3' }}" \
             --local.enabled=false \
             --googlephotos.enabled=true \
-            --logging.level=DEBUG \
+            --logging.level=INFO \
             --logging.format=text-full

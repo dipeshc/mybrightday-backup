@@ -63,6 +63,11 @@ func parseDates(dateStr string) (startDate, endDate string, startTime, endTime t
 	return
 }
 
+type storeStats struct {
+	Saved   int
+	Skipped int
+}
+
 // Download fetches photos from the MyBrightDay API for the configured date range,
 // processes them, and saves them to all enabled storage backends.
 func Download(ctx context.Context, cfg *Config) error {
@@ -158,8 +163,43 @@ func Download(ctx context.Context, cfg *Config) error {
 		countsByDate[item.CaptureTime.In(location).Format("2006-01-02")]++
 	}
 
+	globalStats := make(map[string]*storeStats)
+	dailyStats := make(map[string]*storeStats)
+	for _, s := range stores {
+		globalStats[s.Name()] = &storeStats{}
+		dailyStats[s.Name()] = &storeStats{}
+	}
+
+	formatStats := func(stats map[string]*storeStats) []any {
+		var args []any
+		var keys []string
+		for k := range stats {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			s := stats[k]
+			args = append(args, k+"_saved", s.Saved, k+"_skipped", s.Skipped)
+		}
+		return args
+	}
+
 	totalPhotos := 0
+	dailyPhotos := 0
 	currentProcessingDate := ""
+
+	logAndResetDaily := func() {
+		if currentProcessingDate == "" {
+			return
+		}
+		args := append([]any{"date", currentProcessingDate, "processed", dailyPhotos}, formatStats(dailyStats)...)
+		slog.Info("Processed media for date", args...)
+		dailyPhotos = 0
+		for _, s := range dailyStats {
+			s.Saved = 0
+			s.Skipped = 0
+		}
+	}
 
 	for _, item := range mediaItems {
 		// Convert capture time to center-local timezone for filenames and directory structure.
@@ -167,8 +207,9 @@ func Download(ctx context.Context, cfg *Config) error {
 		captureDate := photoTime.Format("2006-01-02")
 
 		if captureDate != currentProcessingDate {
+			logAndResetDaily()
 			currentProcessingDate = captureDate
-			slog.Info("Processing media for date", "date", currentProcessingDate, "count", countsByDate[currentProcessingDate])
+			slog.Info("Processing media for date", "date", currentProcessingDate, "processing", countsByDate[currentProcessingDate])
 		}
 
 		filename := fmt.Sprintf("daycare_%s_%s.jpg", captureDate, item.AttachmentID)
@@ -208,18 +249,32 @@ func Download(ctx context.Context, cfg *Config) error {
 		}
 
 		for _, s := range stores {
-			if err := s.Save(ctx, photo); err != nil {
-				slog.Error("Error saving photo", "store", fmt.Sprintf("%T", s), "attachment_id", item.AttachmentID, "error", err)
+			saved, err := s.Save(ctx, photo)
+			if err != nil {
+				slog.Error("Error saving photo", "store", s.Name(), "attachment_id", item.AttachmentID, "error", err)
+				continue
+			}
+			if saved {
+				globalStats[s.Name()].Saved++
+				dailyStats[s.Name()].Saved++
+			} else {
+				globalStats[s.Name()].Skipped++
+				dailyStats[s.Name()].Skipped++
 			}
 		}
 
 		totalPhotos++
+		dailyPhotos++
 	}
 
-	slog.Info("Run summary",
+	logAndResetDaily()
+
+	runArgs := append([]any{
 		"start_date", startDate,
 		"end_date", endDate,
-		"processed", totalPhotos)
+		"processed", totalPhotos,
+	}, formatStats(globalStats)...)
+	slog.Info("Run summary", runArgs...)
 
 	return nil
 }
