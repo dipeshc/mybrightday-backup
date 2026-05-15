@@ -1,0 +1,45 @@
+# Keep Alive: keeps the Daily Backup (and this) scheduled workflow enabled by
+# generating weekly repository activity.
+#
+# GitHub auto-disables scheduled workflows on public repositories after 60 days
+# of repository inactivity. Scheduled workflow runs themselves do not count as
+# activity. To prevent the Daily Backup from silently being disabled, this
+# workflow force-pushes a fresh orphan, empty commit to a dedicated `keepalive`
+# branch every week. The push is performed with GITHUB_TOKEN, which counts as
+# repository activity but (by GitHub's anti-recursion rule) does not trigger
+# any other workflows — so no unwanted builds are produced.
+#
+# The `keepalive` branch is rewritten on every run, so it never accumulates
+# history: at any point it contains exactly one parent-less, empty commit.
+
+name: Keep Alive
+
+on:
+  # Weekly, well inside GitHub's 60-day inactivity window for scheduled workflows.
+  schedule:
+    - cron: '0 0 * * 0'
+  workflow_dispatch:
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Rewrite keepalive branch with a fresh orphan empty commit
+        run: |
+          set -euo pipefail
+
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout --orphan keepalive
+          git rm -rf . >/dev/null 2>&1 || true
+          git clean -fdx
+
+          git commit --allow-empty -m "keepalive"
+
+          git push --force origin keepalive

@@ -53,6 +53,7 @@ To set this up for your own account:
     *   `MYBRIGHTDAY_PASSWORD`: Your MyBrightDay password.
     *   `GOOGLE_PHOTOS_REFRESH_TOKEN`: The content of the refresh token file generated in step 2.
 4.  **Enable the Workflow**: Go to the **Actions** tab in your fork, select the "Daily Sync" workflow, and click "Enable workflow". It will now run automatically every day!
+5.  **Enable the Keep Alive Workflow**: In the same **Actions** tab, also enable the "Keep Alive" workflow. It runs weekly and exists only to keep the Daily Backup from being auto-disabled by GitHub after 60 days of repository inactivity.
 
 ## Configuration Overview
 
