@@ -16,6 +16,7 @@ on:
 
 jobs:
   backup:
+    name: Backup
     runs-on: ubuntu-latest
     steps:
       - name: Download Corresponding Release
