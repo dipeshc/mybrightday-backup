@@ -52,7 +52,7 @@ Before downloading media, the tool prepares the metadata that will be injected i
 
 ## 6. Media Discovery
 
-The tool calls the MyBrightDay API for each child and date in the range. It looks for "daily reports" and extracts all "attachments" (photos).
+The tool calls the MyBrightDay API for each child and date in the range. It looks for "daily reports" and extracts all "attachments". Most attachments are photos, but the feed also returns non-image documents (e.g. PDF daily-report summaries); those are filtered out during the processing loop.
 
 Each attachment has a unique `AttachmentID` and a `CaptureTime`.
 
@@ -61,7 +61,7 @@ Each attachment has a unique `AttachmentID` and a `CaptureTime`.
 For each discovered attachment, the tool performs the following:
 
 ### Download & Conversion
-The raw image data is downloaded from MyBrightDay. The tool ensures the image is in JPEG format, converting it if necessary.
+The raw bytes are downloaded from MyBrightDay along with the response's `Content-Type`. Attachments whose media type is not `image/*` (e.g. PDFs) are skipped before the image pipeline runs. For image attachments, the tool then ensures the data is in JPEG format, converting it if necessary.
 
 ### Metadata Injection (EXIF)
 The tool injects the following into the JPEG's EXIF header:

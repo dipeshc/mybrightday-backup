@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -280,32 +281,42 @@ func (c *Client) GetMediaForDateRange(ctx context.Context, dependentIDs []string
 	return items, nil
 }
 
-// DownloadMedia downloads the image bytes for the given attachment ID.
-func (c *Client) DownloadMedia(ctx context.Context, attachmentID string) ([]byte, error) {
+// DownloadMedia downloads the bytes for the given attachment ID and returns
+// them alongside the normalised media type (e.g. "image/jpeg") parsed from the
+// response's Content-Type header. The caller is responsible for filtering on
+// the media type.
+func (c *Client) DownloadMedia(ctx context.Context, attachmentID string) ([]byte, string, error) {
 	url := fmt.Sprintf("%s?key=%s", mediaDownloadURL, attachmentID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating download request: %w", err)
+		return nil, "", fmt.Errorf("creating download request: %w", err)
 	}
 	req.Header.Set("Cookie", c.cookie)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("downloading media: %w", err)
+		return nil, "", fmt.Errorf("downloading media: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("media download returned status %d for attachment %s", resp.StatusCode, attachmentID)
+		return nil, "", fmt.Errorf("media download returned status %d for attachment %s", resp.StatusCode, attachmentID)
+	}
+
+	rawContentType := resp.Header.Get("Content-Type")
+	mediaType, _, err := mime.ParseMediaType(rawContentType)
+	if err != nil {
+		// Fall back to the raw header so the caller can still log it.
+		mediaType = rawContentType
 	}
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("reading media data: %w", err)
+		return nil, mediaType, fmt.Errorf("reading media data: %w", err)
 	}
 
-	return data, nil
+	return data, mediaType, nil
 }
 
 // getProfile fetches the authenticated user's guardian profile.

@@ -162,7 +162,7 @@ func Download(ctx context.Context, cfg *Config) error {
 		return mediaItems[i].CaptureTime.Before(mediaItems[j].CaptureTime)
 	})
 
-	slog.Info("Found media items", "start_date", startDate, "end_date", endDate, "count", len(mediaItems))
+	slog.Info("Found media items", "start_date", startDate, "end_date", endDate, "attachments", len(mediaItems))
 
 	countsByDate := make(map[string]int)
 	for _, item := range mediaItems {
@@ -191,16 +191,24 @@ func Download(ctx context.Context, cfg *Config) error {
 	}
 
 	totalPhotos := 0
+	totalErrors := 0
 	dailyPhotos := 0
+	dailyErrors := 0
 	currentProcessingDate := ""
 
 	logAndResetDaily := func() {
 		if currentProcessingDate == "" {
 			return
 		}
-		args := append([]any{"date", currentProcessingDate, "processed", dailyPhotos}, formatStats(dailyStats)...)
+		args := append([]any{
+			"date", currentProcessingDate,
+			"attachments", countsByDate[currentProcessingDate],
+			"photos", dailyPhotos,
+			"errors", dailyErrors,
+		}, formatStats(dailyStats)...)
 		slog.Info("Processed media for date", args...)
 		dailyPhotos = 0
+		dailyErrors = 0
 		for _, s := range dailyStats {
 			s.Saved = 0
 			s.Skipped = 0
@@ -215,21 +223,33 @@ func Download(ctx context.Context, cfg *Config) error {
 		if captureDate != currentProcessingDate {
 			logAndResetDaily()
 			currentProcessingDate = captureDate
-			slog.Info("Processing media for date", "date", currentProcessingDate, "processing", countsByDate[currentProcessingDate])
+			slog.Info("Processing media for date", "date", currentProcessingDate, "attachments", countsByDate[currentProcessingDate])
 		}
 
 		filename := fmt.Sprintf("daycare_%s_%s.jpg", captureDate, item.AttachmentID)
 
 		slog.Debug("Downloading media", "attachment_id", item.AttachmentID)
-		imgData, err := mbd.DownloadMedia(ctx, item.AttachmentID)
+		imgData, contentType, err := mbd.DownloadMedia(ctx, item.AttachmentID)
 		if err != nil {
 			slog.Error("Error downloading media", "attachment_id", item.AttachmentID, "error", err)
+			totalErrors++
+			dailyErrors++
+			continue
+		}
+
+		// Attachments are not guaranteed to be photos — the feed also returns
+		// documents (e.g. PDFs). Filter on Content-Type before handing the
+		// bytes to the image pipeline.
+		if !strings.HasPrefix(contentType, "image/") {
+			slog.Debug("Skipping non-image attachment", "attachment_id", item.AttachmentID, "content_type", contentType)
 			continue
 		}
 
 		jpegData, err := processor.ConvertToJPEG(imgData)
 		if err != nil {
 			slog.Error("Error converting image to JPEG", "attachment_id", item.AttachmentID, "error", err)
+			totalErrors++
+			dailyErrors++
 			continue
 		}
 
@@ -244,6 +264,8 @@ func Download(ctx context.Context, cfg *Config) error {
 		jpegWithEXIF, err := processor.AddEXIF(jpegData, meta)
 		if err != nil {
 			slog.Error("Error adding EXIF", "attachment_id", item.AttachmentID, "error", err)
+			totalErrors++
+			dailyErrors++
 			continue
 		}
 
@@ -258,6 +280,8 @@ func Download(ctx context.Context, cfg *Config) error {
 			saved, err := s.Save(ctx, photo)
 			if err != nil {
 				slog.Error("Error saving photo", "store", s.Name(), "attachment_id", item.AttachmentID, "error", err)
+				totalErrors++
+				dailyErrors++
 				continue
 			}
 			if saved {
@@ -278,9 +302,15 @@ func Download(ctx context.Context, cfg *Config) error {
 	runArgs := append([]any{
 		"start_date", startDate,
 		"end_date", endDate,
-		"processed", totalPhotos,
+		"attachments", len(mediaItems),
+		"photos", totalPhotos,
+		"errors", totalErrors,
 	}, formatStats(globalStats)...)
 	slog.Info("Run summary", runArgs...)
+
+	if totalErrors > 0 {
+		return fmt.Errorf("run completed with %d per-item error(s); see logs above", totalErrors)
+	}
 
 	return nil
 }
