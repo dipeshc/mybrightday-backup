@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"regexp"
 	"strings"
@@ -182,7 +183,7 @@ func findAlbumByTitle(ctx context.Context, client *http.Client, title string) (s
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("albums list failed with status %d: %s", resp.StatusCode, string(body))
+			return "", fmt.Errorf("albums list failed with status %d: %s", resp.StatusCode, errorBody(body))
 		}
 
 		var listResp albumsListResponse
@@ -235,7 +236,7 @@ func createAlbum(ctx context.Context, client *http.Client, title string) (string
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("album creation failed with status %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("album creation failed with status %d: %s", resp.StatusCode, errorBody(body))
 	}
 
 	var album albumEntry
@@ -302,7 +303,7 @@ func listUploadedAttachmentIDs(ctx context.Context, client *http.Client, startDa
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("search failed with status %d: %s", resp.StatusCode, string(body))
+			return nil, fmt.Errorf("search failed with status %d: %s", resp.StatusCode, errorBody(body))
 		}
 
 		var searchResp searchMediaItemsResponse
@@ -366,7 +367,7 @@ func uploadBytes(ctx context.Context, client *http.Client, data []byte, filename
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("upload failed with status %d: %s", resp.StatusCode, errorBody(body))
 	}
 
 	// The response body is the upload token as plain text.
@@ -412,7 +413,7 @@ func createMediaItem(ctx context.Context, client *http.Client, uploadToken, file
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("media item creation failed with status %d: %s", resp.StatusCode, string(body))
+		return "", fmt.Errorf("media item creation failed with status %d: %s", resp.StatusCode, errorBody(body))
 	}
 
 	var batchResp batchCreateResponse
@@ -430,4 +431,16 @@ func createMediaItem(ctx context.Context, client *http.Client, uploadToken, file
 	}
 
 	return result.MediaItem.ID, nil
+}
+
+// errorBody returns a response body for inclusion in error messages.
+// At DEBUG log level the full body is returned to aid troubleshooting;
+// at higher levels it is truncated so an unexpected upstream payload
+// cannot dump unbounded content into public CI logs.
+func errorBody(body []byte) string {
+	const maxLen = 200
+	if slog.Default().Enabled(context.Background(), slog.LevelDebug) || len(body) <= maxLen {
+		return string(body)
+	}
+	return string(body[:maxLen]) + "...(truncated)"
 }
