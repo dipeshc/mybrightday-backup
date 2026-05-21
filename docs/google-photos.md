@@ -45,6 +45,7 @@ To authenticate the application with your Google account, run the following comm
 
 This will:
 1.  Open your web browser to the Google authorization page.
+    > **Note**: Because the default built-in project is not officially verified by Google, you will see a warning that "Google hasn't verified this app". This is expected. Click **Advanced** and then **Go to MyBrightDay Backup (unsafe)** to continue.
 2.  Prompt you to grant the required permissions (the consent screen is always shown so a refresh token is always issued).
 3.  Receive an authorization code via a temporary local server.
 4.  Exchange the code for an OAuth2 token, extract the refresh token, and save it to `./config/google_photos/refresh_token` as a plain string.

@@ -67,6 +67,11 @@ Commonly used options:
 
 For a full list of options and details on the configuration system, see the [Configuration Reference](docs/configuration.md).
 
+## Troubleshooting & Known Issues
+
+* **Google Photos Unverified App Warning**: By default, the application uses an embedded Google Cloud project for OAuth. Because this project is not officially verified by Google, you will see a warning screen saying "Google hasn't verified this app" during the `google-photos init` step. You can safely click "Advanced" and "Go to MyBrightDay Backup (unsafe)" to proceed. Alternatively, you can configure your own Custom Google Cloud Project (see the [Google Photos Guide](docs/google-photos.md)).
+* **Authentication Blocked by Web Session**: There is an intermittent bug where having an active login session on the MyBrightDay website can block the tool (and the daily GitHub Actions job) from authenticating. If your backup job suddenly starts failing with authentication errors, log into the MyBrightDay website in your browser, **manually log out**, and then trigger the job again.
+
 ---
 
 ## Documentation
