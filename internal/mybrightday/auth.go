@@ -31,6 +31,11 @@ func generateRandomString(n int) string {
 }
 
 // Authenticate performs the multi-stage authentication flow to obtain a MyBrightDay session cookie.
+//
+// The HTTP client here is intentionally *not* wrapped with httpx.RetryTransport:
+// each stage carries a single-use Auth0 state/code parameter, so a network blip
+// followed by an automatic retry would re-submit a burned token and fail with a
+// 4xx. The flow runs once at startup; on transient failure the whole run aborts.
 func Authenticate(ctx context.Context, email, password string) (string, error) {
 	jar, _ := cookiejar.New(nil)
 	client := &http.Client{

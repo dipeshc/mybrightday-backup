@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/dipeshc/mybrightday-backup/internal/httpx"
 )
 
 const (
@@ -81,9 +83,14 @@ func NewClient(baseURL, cookie string) *Client {
 		cookie = "session=" + cookie
 	}
 	return &Client{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL:    baseURL,
-		cookie:     cookie,
+		httpClient: &http.Client{
+			// Timeout covers the entire client.Do, including retries. Sized to
+			// allow ~3 attempts each within roughly the original 30s budget.
+			Timeout:   120 * time.Second,
+			Transport: &httpx.RetryTransport{},
+		},
+		baseURL: baseURL,
+		cookie:  cookie,
 	}
 }
 

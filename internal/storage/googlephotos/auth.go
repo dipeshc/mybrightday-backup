@@ -17,6 +17,7 @@ import (
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
+	"github.com/dipeshc/mybrightday-backup/internal/httpx"
 	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos/credential"
 )
 
@@ -59,7 +60,12 @@ func getOAuthClient(ctx context.Context, cfg Config) (*http.Client, error) {
 	}
 
 	tok := &oauth2.Token{RefreshToken: cfg.RefreshToken}
-	return oauthCfg.Client(ctx, tok), nil
+	client := oauthCfg.Client(ctx, tok)
+	// Wrap the OAuth transport so transient failures retry transparently. The
+	// retry layer sits *outside* oauth2.Transport, so each attempt still goes
+	// through token refresh (which is cached and only fires when needed).
+	client.Transport = &httpx.RetryTransport{Base: client.Transport}
+	return client, nil
 }
 
 // PerformInitAuth performs the interactive authorization flow and returns the
