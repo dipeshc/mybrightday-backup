@@ -84,8 +84,9 @@ func NewClient(baseURL, cookie string) *Client {
 	}
 	return &Client{
 		httpClient: &http.Client{
-			// Timeout covers the entire client.Do, including retries. Sized to
-			// allow ~3 attempts each within roughly the original 30s budget.
+			// Timeout covers the entire client.Do, including retry backoff and
+			// Retry-After sleeps across all 5 attempts. A request that exhausts
+			// it surfaces as context deadline exceeded.
 			Timeout:   120 * time.Second,
 			Transport: &httpx.RetryTransport{},
 		},
