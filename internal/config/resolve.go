@@ -38,6 +38,7 @@ func ResolveValue(key string, filePath string, flagValue string, configValue str
 // pathPrefix tracks the slash-separated file path (e.g. "google_photos") separately from
 // prefix which tracks the underscore-separated env key prefix (e.g. "google_photos").
 // They diverge at each nesting level: key uses "_", file path uses "/".
+// Supported field kinds: string, float64, bool, struct, and pointer-to-struct.
 func ResolveStruct(v reflect.Value, prefix string, pathPrefix string, flagPrefix string, flags map[string]string) {
 	t := v.Type()
 	for i := 0; i < v.NumField(); i++ {
@@ -81,11 +82,13 @@ func ResolveStruct(v reflect.Value, prefix string, pathPrefix string, flagPrefix
 			continue
 		}
 
+		// Only struct pointers are resolved; pointer-to-scalar fields are
+		// left untouched so nil keeps meaning "never configured".
 		if fieldValue.Kind() == reflect.Ptr {
-			if fieldValue.IsNil() {
-				fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
-			}
-			if fieldValue.Elem().Kind() == reflect.Struct {
+			if fieldValue.Type().Elem().Kind() == reflect.Struct {
+				if fieldValue.IsNil() {
+					fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
+				}
 				ResolveStruct(fieldValue.Elem(), key, filePath, flagKey, flags)
 			}
 			continue
@@ -100,10 +103,6 @@ func ResolveStruct(v reflect.Value, prefix string, pathPrefix string, flagPrefix
 			}
 		} else if fieldValue.Kind() == reflect.Bool {
 			configStr = fmt.Sprintf("%t", fieldValue.Bool())
-		} else if fieldValue.Kind() == reflect.Ptr && fieldValue.Elem().Kind() == reflect.Bool {
-			if !fieldValue.IsNil() {
-				configStr = fmt.Sprintf("%t", fieldValue.Elem().Bool())
-			}
 		}
 
 		resolvedStr := ResolveValue(key, filePath, flags[flagKey], configStr)
@@ -118,12 +117,6 @@ func ResolveStruct(v reflect.Value, prefix string, pathPrefix string, flagPrefix
 				}
 			} else if fieldValue.Kind() == reflect.Bool {
 				fieldValue.SetBool(strings.ToLower(resolvedStr) == "true" || resolvedStr == "1")
-			} else if fieldValue.Kind() == reflect.Ptr && fieldValue.Elem().Kind() == reflect.Bool {
-				val := strings.ToLower(resolvedStr) == "true" || resolvedStr == "1"
-				if fieldValue.IsNil() {
-					fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
-				}
-				fieldValue.Elem().SetBool(val)
 			}
 		}
 	}

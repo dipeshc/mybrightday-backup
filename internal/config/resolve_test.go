@@ -114,10 +114,10 @@ func TestResolveStructEnvKeys(t *testing.T) {
 	if !cfg.DryRun {
 		t.Error("DryRun = false, want true")
 	}
-	// Pointer leaves are allocated but not resolved: the Ptr branch in
-	// ResolveStruct returns before the scalar handling runs.
-	if cfg.MaybeFlag == nil || *cfg.MaybeFlag {
-		t.Errorf("MaybeFlag = %v, want allocated false", cfg.MaybeFlag)
+	// Pointer-to-scalar fields are not resolved: nil keeps meaning
+	// "never configured".
+	if cfg.MaybeFlag != nil {
+		t.Errorf("MaybeFlag = %v, want nil", cfg.MaybeFlag)
 	}
 	if cfg.Nested.Token != "tok-nested" {
 		t.Errorf("Nested.Token = %q, want tok-nested", cfg.Nested.Token)
