@@ -29,9 +29,34 @@ jobs:
           SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
           echo "value=$(date +'%Y-%m-%d')-${{ github.run_number }}-${SHORT_SHA}" >> $GITHUB_OUTPUT
 
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run tests
+        run: make test
+
+      - name: Report coverage
+        run: |
+          {
+            echo '### Test coverage'
+            echo '```'
+            go tool cover -func=coverage.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   build:
     name: Build ${{ matrix.goos }}/${{ matrix.goarch }}
-    needs: version
+    needs: [version, test]
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

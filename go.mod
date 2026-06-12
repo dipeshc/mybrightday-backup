@@ -6,6 +6,7 @@ require (
 	github.com/dsoprea/go-exif/v3 v3.0.1
 	github.com/dsoprea/go-jpeg-image-structure/v2 v2.0.0-20221012074422-4f3f7e934102
 	github.com/spf13/cobra v1.10.2
+	github.com/spf13/pflag v1.0.9
 	golang.org/x/oauth2 v0.25.0
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -20,7 +21,6 @@ require (
 	github.com/go-xmlfmt/xmlfmt v0.0.0-20191208150333-d5b6f63a941b // indirect
 	github.com/golang/geo v0.0.0-20210211234256-740aa86cb551 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/spf13/pflag v1.0.9 // indirect
 	golang.org/x/net v0.34.0 // indirect
 	golang.org/x/sys v0.44.0 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect

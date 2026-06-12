@@ -74,6 +74,9 @@ type storeStats struct {
 	Skipped int
 }
 
+// authenticate is a variable so tests can stub the MyBrightDay auth flow.
+var authenticate = mybrightday.Authenticate
+
 // Download fetches photos from the MyBrightDay API for the configured date range,
 // processes them, and saves them to all enabled storage backends.
 func Download(ctx context.Context, cfg *Config) error {
@@ -88,7 +91,7 @@ func Download(ctx context.Context, cfg *Config) error {
 	slog.Debug("Processing range", "start_date", startDate, "end_date", endDate)
 
 	slog.Info("Authenticating with MyBrightDay...")
-	cookie, err := mybrightday.Authenticate(ctx, cfg.MyBrightDay.Email, cfg.MyBrightDay.Password)
+	cookie, err := authenticate(ctx, cfg.MyBrightDay.Email, cfg.MyBrightDay.Password)
 	if err != nil {
 		return fmt.Errorf("mybrightday authentication: %w", err)
 	}

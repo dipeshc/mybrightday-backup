@@ -1,6 +1,9 @@
 # Built binary
 /mbdb
 
+# Test coverage profile
+coverage.out
+
 # The configuration file
 config.yaml
 

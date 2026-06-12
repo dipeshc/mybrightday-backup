@@ -21,6 +21,13 @@ import (
 	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos/credential"
 )
 
+// Function hooks so tests can stub the browser launch and the interactive
+// auth flow.
+var (
+	openBrowserFn     = openBrowser
+	performInitAuthFn = PerformInitAuth
+)
+
 // oauthScopes defines the Google API scopes needed by this tool.
 var oauthScopes = []string{
 	"https://www.googleapis.com/auth/photoslibrary.appendonly",
@@ -100,7 +107,7 @@ func Init(ctx context.Context, cfg Config) error {
 		return nil
 	}
 
-	tok, err := PerformInitAuth(ctx, cfg)
+	tok, err := performInitAuthFn(ctx, cfg)
 	if err != nil {
 		return fmt.Errorf("google photos authentication: %w", err)
 	}
@@ -186,7 +193,7 @@ func getTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token,
 		oauth2.SetAuthURLParam("prompt", "consent"),
 	)
 	slog.Info("Opening browser for authorization...")
-	if err := openBrowser(authURL); err != nil {
+	if err := openBrowserFn(authURL); err != nil {
 		slog.Error("Failed to open browser", "error", err)
 		fmt.Printf("Please open this URL manually:\n\n%s\n\n", authURL)
 	}

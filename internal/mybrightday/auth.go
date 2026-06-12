@@ -18,10 +18,18 @@ import (
 
 const (
 	ficClientID    = "5VIzhuWNKxFc9etVvp5fonr2tlbBEZae"
-	ficAuth0Domain = "bhloginsso.brighthorizons.com"
 	ficRedirectURI = "https://familyinfocenter.brighthorizons.com/okta/callback"
 	ficAudience    = "https://ShareservicesAPI"
 	userAgent      = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.138 Safari/537.36"
+)
+
+// Endpoint bases are variables so tests can point the flow at a fake server.
+// ficRedirectURI stays constant: CheckRedirect stops before fetching it, so it
+// is only ever inspected, never requested.
+var (
+	ficAuth0BaseURL       = "https://bhloginsso.brighthorizons.com"
+	mbdTokenURL           = "https://mbdwgateway.brighthorizons.com/api/account/mbdtoken"
+	mbdSessionRedirectURL = "https://mybrightday.brighthorizons.com/auth/jwt/redirect"
 )
 
 func generateRandomString(n int) string {
@@ -59,8 +67,8 @@ func Authenticate(ctx context.Context, email, password string) (string, error) {
 
 	// Stage 1: Start OIDC flow.
 	slog.Debug("Stage 1: Starting Auth0 authorization flow", "email", email)
-	authorizeURL := fmt.Sprintf("https://%s/authorize?client_id=%s&scope=openid+offline_access+profile+email&audience=%s&redirect_uri=%s&response_type=code&response_mode=query&state=%s&nonce=%s&code_challenge=%s&code_challenge_method=S256",
-		ficAuth0Domain, ficClientID, url.QueryEscape(ficAudience), url.QueryEscape(ficRedirectURI), stateOIDC, nonce, codeChallenge)
+	authorizeURL := fmt.Sprintf("%s/authorize?client_id=%s&scope=openid+offline_access+profile+email&audience=%s&redirect_uri=%s&response_type=code&response_mode=query&state=%s&nonce=%s&code_challenge=%s&code_challenge_method=S256",
+		ficAuth0BaseURL, ficClientID, url.QueryEscape(ficAudience), url.QueryEscape(ficRedirectURI), stateOIDC, nonce, codeChallenge)
 
 	req, err := http.NewRequestWithContext(ctx, "GET", authorizeURL, nil)
 	if err != nil {
@@ -91,7 +99,7 @@ func Authenticate(ctx context.Context, email, password string) (string, error) {
 
 	// Stage 2: Submit Identifier (Email).
 	slog.Debug("Stage 2: Submitting email identifier")
-	identifierURL := fmt.Sprintf("https://%s/u/login/identifier?state=%s", ficAuth0Domain, auth0State)
+	identifierURL := fmt.Sprintf("%s/u/login/identifier?state=%s", ficAuth0BaseURL, auth0State)
 
 	val := url.Values{}
 	val.Add("username", email)
@@ -113,7 +121,7 @@ func Authenticate(ctx context.Context, email, password string) (string, error) {
 
 	// Stage 3: Submit Password.
 	slog.Debug("Stage 3: Submitting password")
-	passwordURL := fmt.Sprintf("https://%s/u/login/password?state=%s", ficAuth0Domain, auth0State)
+	passwordURL := fmt.Sprintf("%s/u/login/password?state=%s", ficAuth0BaseURL, auth0State)
 
 	val = url.Values{}
 	val.Add("username", email)
@@ -151,7 +159,7 @@ func Authenticate(ctx context.Context, email, password string) (string, error) {
 
 	// Stage 4: Exchange Code for FIC JWT.
 	slog.Debug("Stage 4: Exchanging code for FIC JWT")
-	tokenURL := fmt.Sprintf("https://%s/oauth/token", ficAuth0Domain)
+	tokenURL := ficAuth0BaseURL + "/oauth/token"
 	val = url.Values{}
 	val.Add("grant_type", "authorization_code")
 	val.Add("client_id", ficClientID)
@@ -197,7 +205,7 @@ func Authenticate(ctx context.Context, email, password string) (string, error) {
 
 	// Stage 5: Exchange for MBD Token.
 	slog.Debug("Stage 5: Exchanging FIC JWT for MBD Token")
-	req, err = http.NewRequestWithContext(ctx, "GET", "https://mbdwgateway.brighthorizons.com/api/account/mbdtoken", nil)
+	req, err = http.NewRequestWithContext(ctx, "GET", mbdTokenURL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -227,8 +235,7 @@ func Authenticate(ctx context.Context, email, password string) (string, error) {
 
 	// Stage 6: Initialize MBD Session.
 	slog.Debug("Stage 6: Establishing MyBrightDay session")
-	redirectURL := "https://mybrightday.brighthorizons.com/auth/jwt/redirect"
-	req, err = http.NewRequestWithContext(ctx, "GET", redirectURL, nil)
+	req, err = http.NewRequestWithContext(ctx, "GET", mbdSessionRedirectURL, nil)
 	if err != nil {
 		return "", err
 	}

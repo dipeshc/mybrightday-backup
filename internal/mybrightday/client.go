@@ -17,10 +17,10 @@ import (
 	"github.com/dipeshc/mybrightday-backup/internal/httpx"
 )
 
-const (
-	mediaDownloadURL  = "https://mybrightday.brighthorizons.com/remote/v1/file_attachment"
-	captureTimeLayout = "2006-01-02T15:04:05"
-)
+const captureTimeLayout = "2006-01-02T15:04:05"
+
+// nominatimSearchURL is a variable so tests can point geocoding at a fake server.
+var nominatimSearchURL = "https://nominatim.openstreetmap.org/search"
 
 // Client makes authenticated requests to the MyBrightDay API.
 type Client struct {
@@ -163,7 +163,7 @@ func (c *Client) geocode(ctx context.Context, query string) (float64, float64, e
 	v.Set("limit", "1")
 	v.Set("q", query)
 
-	searchURL := "https://nominatim.openstreetmap.org/search?" + v.Encode()
+	searchURL := nominatimSearchURL + "?" + v.Encode()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, searchURL, nil)
 	if err != nil {
 		return 0, 0, fmt.Errorf("creating geocode request: %w", err)
@@ -294,7 +294,7 @@ func (c *Client) GetMediaForDateRange(ctx context.Context, dependentIDs []string
 // response's Content-Type header. The caller is responsible for filtering on
 // the media type.
 func (c *Client) DownloadMedia(ctx context.Context, attachmentID string) ([]byte, string, error) {
-	url := fmt.Sprintf("%s?key=%s", mediaDownloadURL, attachmentID)
+	url := fmt.Sprintf("%s/remote/v1/file_attachment?key=%s", c.baseURL, attachmentID)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
