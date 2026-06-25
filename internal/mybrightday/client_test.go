@@ -3,6 +3,7 @@ package mybrightday
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -298,6 +299,57 @@ func TestDownloadMediaError(t *testing.T) {
 	_, _, err := NewClient(ts.URL, "tok").DownloadMedia(context.Background(), "att1")
 	if err == nil || !strings.Contains(err.Error(), "status 404") {
 		t.Errorf("err = %v, want status 404 error", err)
+	}
+}
+
+func TestDownloadMediaSignedURL(t *testing.T) {
+	var signedURLCookie string
+	signedURLCalled := false
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/signed", func(w http.ResponseWriter, r *http.Request) {
+		signedURLCalled = true
+		signedURLCookie = r.Header.Get("Cookie")
+		w.Header().Set("Content-Type", "image/jpeg")
+		w.Write([]byte("real-image-bytes"))
+	})
+	ts := httptest.NewServer(mux)
+	defer ts.Close()
+
+	mux.HandleFunc("/remote/v1/file_attachment", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"signed_url":%q,"mime_type":"image/png","expires_in":300}`, ts.URL+"/signed")
+	})
+
+	data, mediaType, err := NewClient(ts.URL, "tok").DownloadMedia(context.Background(), "att1")
+	if err != nil {
+		t.Fatalf("DownloadMedia: %v", err)
+	}
+	if !signedURLCalled {
+		t.Error("signed url was not fetched")
+	}
+	if string(data) != "real-image-bytes" {
+		t.Errorf("data = %q, want real-image-bytes", data)
+	}
+	// Media type comes from the JSON envelope, not the signed URL response.
+	if mediaType != "image/png" {
+		t.Errorf("mediaType = %q, want image/png (from envelope)", mediaType)
+	}
+	if signedURLCookie != "" {
+		t.Errorf("signed url request carried cookie %q, want none", signedURLCookie)
+	}
+}
+
+func TestDownloadMediaSignedURLMissing(t *testing.T) {
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"signed_url":"","mime_type":"image/jpeg","expires_in":300}`))
+	}))
+	defer ts.Close()
+
+	_, _, err := NewClient(ts.URL, "tok").DownloadMedia(context.Background(), "att1")
+	if err == nil || !strings.Contains(err.Error(), "no signed_url") {
+		t.Errorf("err = %v, want no signed_url error", err)
 	}
 }
 

@@ -72,6 +72,14 @@ type mediaEntry struct {
 	EntryType    string `json:"entry_type"`
 }
 
+// fileAttachmentResponse is the JSON envelope returned by the file_attachment
+// endpoint for attachments served via a presigned storage URL.
+type fileAttachmentResponse struct {
+	SignedURL string `json:"signed_url"`
+	MimeType  string `json:"mime_type"`
+	ExpiresIn int    `json:"expires_in"`
+}
+
 var (
 	geocodeCache   = make(map[string]struct{ lat, lon float64 })
 	geocodeCacheMu sync.RWMutex
@@ -290,9 +298,15 @@ func (c *Client) GetMediaForDateRange(ctx context.Context, dependentIDs []string
 }
 
 // DownloadMedia downloads the bytes for the given attachment ID and returns
-// them alongside the normalised media type (e.g. "image/jpeg") parsed from the
-// response's Content-Type header. The caller is responsible for filtering on
-// the media type.
+// them alongside the media type (e.g. "image/jpeg").
+//
+// The file_attachment endpoint may respond in one of two ways: directly with the
+// binary, or with a JSON envelope pointing at a short-lived presigned storage URL
+// that must be fetched in a second step. Both are handled transparently here.
+//
+// The returned media type is informational only — it reflects what the API
+// claims and can disagree with the actual bytes, so callers must still sniff the
+// content before processing it.
 func (c *Client) DownloadMedia(ctx context.Context, attachmentID string) ([]byte, string, error) {
 	url := fmt.Sprintf("%s/remote/v1/file_attachment?key=%s", c.baseURL, attachmentID)
 
@@ -324,7 +338,53 @@ func (c *Client) DownloadMedia(ctx context.Context, attachmentID string) ([]byte
 		return nil, mediaType, fmt.Errorf("reading media data: %w", err)
 	}
 
-	return data, mediaType, nil
+	if mediaType != "application/json" {
+		// Legacy path: the response body is the attachment binary itself.
+		return data, mediaType, nil
+	}
+
+	var envelope fileAttachmentResponse
+	if err := json.Unmarshal(data, &envelope); err != nil {
+		return nil, "", fmt.Errorf("decoding file_attachment envelope for %s: %w", attachmentID, err)
+	}
+	if envelope.SignedURL == "" {
+		return nil, "", fmt.Errorf("file_attachment envelope for %s has no signed_url", attachmentID)
+	}
+
+	signedData, err := c.fetchSignedURL(ctx, envelope.SignedURL)
+	if err != nil {
+		return nil, "", fmt.Errorf("fetching signed url for %s: %w", attachmentID, err)
+	}
+
+	return signedData, envelope.MimeType, nil
+}
+
+// fetchSignedURL downloads the bytes from a presigned storage URL.
+func (c *Client) fetchSignedURL(ctx context.Context, signedURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, signedURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating signed url request: %w", err)
+	}
+
+	// Deliberately no session cookie: the URL is already signed and points at
+	// third-party storage, so sending our cookie would leak it and is needless.
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("requesting signed url: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("signed url returned status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("reading signed url data: %w", err)
+	}
+
+	return data, nil
 }
 
 // getProfile fetches the authenticated user's guardian profile.
