@@ -229,28 +229,10 @@ func Download(ctx context.Context, cfg *Config) error {
 			slog.Info("Processing media for date", "date", currentProcessingDate, "attachments", countsByDate[currentProcessingDate])
 		}
 
-		filename := fmt.Sprintf("daycare_%s_%s.jpg", captureDate, item.AttachmentID)
-
 		slog.Debug("Downloading media", "attachment_id", item.AttachmentID)
-		imgData, contentType, err := mbd.DownloadMedia(ctx, item.AttachmentID)
+		mediaData, contentType, err := mbd.DownloadMedia(ctx, item.AttachmentID)
 		if err != nil {
 			slog.Error("Error downloading media", "attachment_id", item.AttachmentID, "error", err)
-			totalErrors++
-			dailyErrors++
-			continue
-		}
-
-		// Attachments are not guaranteed to be photos — the feed also returns
-		// documents (e.g. PDFs). Filter on Content-Type before handing the
-		// bytes to the image pipeline.
-		if !strings.HasPrefix(contentType, "image/") {
-			slog.Debug("Skipping non-image attachment", "attachment_id", item.AttachmentID, "content_type", contentType)
-			continue
-		}
-
-		jpegData, err := processor.ConvertToJPEG(imgData)
-		if err != nil {
-			slog.Error("Error converting image to JPEG", "attachment_id", item.AttachmentID, "error", err)
 			totalErrors++
 			dailyErrors++
 			continue
@@ -264,18 +246,51 @@ func Download(ctx context.Context, cfg *Config) error {
 			Longitude:      lon,
 		}
 
-		jpegWithEXIF, err := processor.AddEXIF(jpegData, meta)
-		if err != nil {
-			slog.Error("Error adding EXIF", "attachment_id", item.AttachmentID, "error", err)
-			totalErrors++
-			dailyErrors++
+		var processedData []byte
+		var ext string
+		switch {
+		case strings.HasPrefix(contentType, "image/"):
+			ext = ".jpg"
+			jpegData, err := processor.ConvertToJPEG(mediaData)
+			if err != nil {
+				slog.Error("Error converting image to JPEG", "attachment_id", item.AttachmentID, "error", err)
+				totalErrors++
+				dailyErrors++
+				continue
+			}
+			processedData, err = processor.AddEXIF(jpegData, meta)
+			if err != nil {
+				slog.Error("Error adding EXIF", "attachment_id", item.AttachmentID, "error", err)
+				totalErrors++
+				dailyErrors++
+				continue
+			}
+		case strings.HasPrefix(contentType, "video/"):
+			// ponytail: only mp4/mov are mapped; other video subtypes get
+			// labelled .mp4. Extend the mapping (and the googlephotos dedup
+			// regex) if the feed ever serves another container.
+			ext = ".mp4"
+			if contentType == "video/quicktime" {
+				ext = ".mov"
+			}
+			processedData, err = processor.AddMP4Metadata(mediaData, meta)
+			if err != nil {
+				slog.Error("Error adding MP4 metadata", "attachment_id", item.AttachmentID, "error", err)
+				totalErrors++
+				dailyErrors++
+				continue
+			}
+		default:
+			// Attachments are not guaranteed to be media — the feed also
+			// returns documents (e.g. PDFs).
+			slog.Debug("Skipping non-media attachment", "attachment_id", item.AttachmentID, "content_type", contentType)
 			continue
 		}
 
 		photo := storage.Photo{
 			AttachmentID: item.AttachmentID,
-			Filename:     filename,
-			Data:         jpegWithEXIF,
+			Filename:     fmt.Sprintf("daycare_%s_%s%s", captureDate, item.AttachmentID, ext),
+			Data:         processedData,
 			CaptureTime:  photoTime,
 		}
 

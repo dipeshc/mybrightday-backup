@@ -25,9 +25,10 @@ const (
 // and minor date-metadata drift.
 const uploadedIDsDateBuffer = 2
 
-// attachmentIDFromFilenameRe extracts a MongoDB ObjectId from filenames like daycare_2024-01-15_69f9390f8d9c1412adacc127.jpg.
+// attachmentIDFromFilenameRe extracts a MongoDB ObjectId from filenames like
+// daycare_2024-01-15_69f9390f8d9c1412adacc127.jpg (photos) or .mp4/.mov (videos).
 var attachmentIDFromFilenameRe = regexp.MustCompile(
-	`^daycare_\d{4}-\d{2}-\d{2}_([0-9a-fA-F]{24})\.jpg$`,
+	`^daycare_\d{4}-\d{2}-\d{2}_([0-9a-fA-F]{24})\.(?:jpg|mp4|mov)$`,
 )
 
 // batchCreateRequest is the request body for creating media items.

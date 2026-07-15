@@ -216,6 +216,7 @@ func TestListUploadedAttachmentIDs(t *testing.T) {
 				MediaItems: []mediaItemEntry{
 					{ID: "m3", Filename: "daycare_2024-01-16_abcdefabcdefabcdefabcdef.jpg"},
 					{ID: "m4", Filename: "daycare_2024-01-16_short.jpg"},
+					{ID: "m5", Filename: "daycare_2024-01-17_fedcbafedcbafedcbafedcba.mp4"},
 				},
 			}
 		})
@@ -224,7 +225,7 @@ func TestListUploadedAttachmentIDs(t *testing.T) {
 		if err != nil {
 			t.Fatalf("listUploadedAttachmentIDs: %v", err)
 		}
-		if len(ids) != 2 || !ids["0123456789abcdef01234567"] || !ids["abcdefabcdefabcdefabcdef"] {
+		if len(ids) != 3 || !ids["0123456789abcdef01234567"] || !ids["abcdefabcdefabcdefabcdef"] || !ids["fedcbafedcbafedcbafedcba"] {
 			t.Errorf("ids = %v", ids)
 		}
 

@@ -14,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	mp4 "github.com/abema/go-mp4"
 )
 
 func TestParseDateString(t *testing.T) {
@@ -106,6 +108,53 @@ func tinyJPEG(t *testing.T) []byte {
 	return buf.Bytes()
 }
 
+// tinyMP4 builds a minimal valid MP4 (ftyp + moov/mvhd), just enough for
+// processor.AddMP4Metadata to rewrite it.
+func tinyMP4(t *testing.T) []byte {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "*.mp4")
+	if err != nil {
+		t.Fatalf("creating temp mp4: %v", err)
+	}
+	defer f.Close()
+
+	w := mp4.NewWriter(f)
+	start := func(bt mp4.BoxType) {
+		if _, err := w.StartBox(&mp4.BoxInfo{Type: bt}); err != nil {
+			t.Fatalf("starting %s box: %v", bt, err)
+		}
+	}
+	end := func() {
+		if _, err := w.EndBox(); err != nil {
+			t.Fatalf("ending box: %v", err)
+		}
+	}
+	marshal := func(payload mp4.IImmutableBox) {
+		if _, err := mp4.Marshal(w, payload, mp4.Context{}); err != nil {
+			t.Fatalf("marshaling box: %v", err)
+		}
+	}
+
+	start(mp4.BoxTypeFtyp())
+	marshal(&mp4.Ftyp{
+		MajorBrand:       [4]byte{'i', 's', 'o', 'm'},
+		MinorVersion:     512,
+		CompatibleBrands: []mp4.CompatibleBrandElem{{CompatibleBrand: [4]byte{'i', 's', 'o', 'm'}}},
+	})
+	end()
+	start(mp4.BoxTypeMoov())
+	start(mp4.BoxTypeMvhd())
+	marshal(&mp4.Mvhd{Timescale: 1000, Rate: 0x00010000, Volume: 0x0100, NextTrackID: 2})
+	end()
+	end()
+
+	data, err := os.ReadFile(f.Name())
+	if err != nil {
+		t.Fatalf("reading temp mp4: %v", err)
+	}
+	return data
+}
+
 // mbdServerOptions tweaks individual endpoints of the fake MyBrightDay API.
 type mbdServerOptions struct {
 	dependents       []map[string]string
@@ -120,6 +169,7 @@ type mbdServerOptions struct {
 func startMBDServer(t *testing.T, opts mbdServerOptions) *httptest.Server {
 	t.Helper()
 	jpegData := tinyJPEG(t)
+	mp4Data := tinyMP4(t)
 
 	if opts.timezone == "" {
 		opts.timezone = "America/Los_Angeles"
@@ -175,6 +225,11 @@ func startMBDServer(t *testing.T, opts mbdServerOptions) *httptest.Server {
 			w.Write([]byte("not a real image"))
 			return
 		}
+		if strings.HasPrefix(key, "vid") {
+			w.Header().Set("Content-Type", "video/mp4")
+			w.Write(mp4Data)
+			return
+		}
 		w.Header().Set("Content-Type", "image/jpeg")
 		w.Write(jpegData)
 	})
@@ -206,6 +261,7 @@ func TestDownloadHappyPath(t *testing.T) {
 		media: []map[string]string{
 			{"attachment_id": "att1", "capture_time": "2024-01-15T20:00:00"},
 			{"attachment_id": "att2", "capture_time": "2024-01-16T20:00:00"},
+			{"attachment_id": "vid1", "capture_time": "2024-01-16T20:30:00"},
 			{"attachment_id": "pdf1", "capture_time": "2024-01-16T21:00:00"},
 		},
 	})
@@ -218,14 +274,15 @@ func TestDownloadHappyPath(t *testing.T) {
 	for _, want := range []string{
 		filepath.Join("2024-01-15", "daycare_2024-01-15_att1.jpg"),
 		filepath.Join("2024-01-16", "daycare_2024-01-16_att2.jpg"),
+		filepath.Join("2024-01-16", "daycare_2024-01-16_vid1.mp4"),
 	} {
 		path := filepath.Join(cfg.Local.Directory, want)
 		if _, err := os.Stat(path); err != nil {
-			t.Errorf("expected photo at %s: %v", want, err)
+			t.Errorf("expected media at %s: %v", want, err)
 		}
 	}
 
-	// Only the two image attachments may exist; the PDF must not be saved.
+	// Only the image and video attachments may exist; the PDF must not be saved.
 	var count int
 	filepath.WalkDir(cfg.Local.Directory, func(path string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() {
@@ -233,8 +290,8 @@ func TestDownloadHappyPath(t *testing.T) {
 		}
 		return nil
 	})
-	if count != 2 {
-		t.Errorf("saved files = %d, want 2", count)
+	if count != 3 {
+		t.Errorf("saved files = %d, want 3", count)
 	}
 }
 

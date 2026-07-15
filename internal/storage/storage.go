@@ -11,15 +11,17 @@ type BaseConfig struct {
 	Enabled bool `yaml:"enabled" desc:"Enable this storage destination"`
 }
 
-// Photo is a fully processed photo ready for storage.
+// Photo is a fully processed media item (photo or video) ready for storage.
 // CaptureTime must be in the center's local timezone so that storage backends
 // can use it directly for date-based directory naming and filtering.
 type Photo struct {
 	// AttachmentID is the MyBrightDay attachment identifier, used for deduplication.
 	AttachmentID string
-	// Filename is the canonical file name, e.g. "daycare_2024-12-20_<id>.jpg".
+	// Filename is the canonical file name, e.g. "daycare_2024-12-20_<id>.jpg"
+	// or "daycare_2024-12-20_<id>.mp4".
 	Filename string
-	// Data is the processed JPEG bytes with EXIF metadata already injected.
+	// Data is the processed media bytes with capture-time and GPS metadata
+	// already injected (EXIF for photos, mvhd/©xyz for MP4 videos).
 	Data []byte
 	// CaptureTime is the photo's capture time in the daycare center's local timezone.
 	CaptureTime time.Time
