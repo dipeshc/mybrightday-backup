@@ -111,6 +111,7 @@ jobs:
           name: binary-${{ matrix.goos }}-${{ matrix.goarch }}
           path: dist/
           if-no-files-found: error
+          retention-days: 1
 
   release:
     name: Create Release
