@@ -4,14 +4,31 @@
 
 # MyBrightDay Backup
 
-A tool to automatically backup photos from the MyBrightDay application, with optional upload to Google Photos.
+A tool to automatically backup photos from the Bright Horizons MyBrightDay application, with optional upload to Google Photos.
 
 ## Getting Started
 
-### Download
-Download the latest binary for your operating system from the [Releases](https://github.com/dipeshc/mybrightday-backup/releases) page.
+### Automated Daily Backup (GitHub Actions) — Recommended
 
-### Running Commands
+This repository includes a GitHub Actions workflow to automatically download your photos every day and back them up directly to Google Photos, requiring no local server. This is the easiest way to get started.
+
+To set this up for your own account:
+1.  **Fork this repository**: Click the "Fork" button at the top right of this page to create your own copy.
+2.  **Get a Google Photos Refresh Token**: Download the latest binary for your operating system from the [Releases](https://github.com/dipeshc/mybrightday-backup/releases) page, then run the initialization command locally to authenticate and generate a refresh token.
+    ```bash
+    ./mbdb google-photos init
+    cat ./config/google_photos/refresh_token
+    ```
+3.  **Add Repository Secrets**: Go to your forked repository's **Settings** > **Secrets and variables** > **Actions** and add the following repository secrets:
+    *   `MYBRIGHTDAY_EMAIL`: Your MyBrightDay login email.
+    *   `MYBRIGHTDAY_PASSWORD`: Your MyBrightDay password.
+    *   `GOOGLE_PHOTOS_REFRESH_TOKEN`: The content of the refresh token file generated in step 2.
+4.  **Enable the Workflow**: Go to the **Actions** tab in your fork, select the "Daily Sync" workflow, and click "Enable workflow". It will now run automatically every day!
+5.  **Enable the Keep Alive Workflow**: In the same **Actions** tab, also enable the "Keep Alive" workflow. It runs weekly and exists only to keep the Daily Backup from being auto-disabled by GitHub after 60 days of repository inactivity.
+
+### Running Manually
+
+Download the latest binary for your operating system from the [Releases](https://github.com/dipeshc/mybrightday-backup/releases) page.
 
 1.  **Download Photos**:
     Download photos for a specific date or range. You must provide your MyBrightDay login information.
@@ -36,24 +53,6 @@ Download the latest binary for your operating system from the [Releases](https:/
     ```bash
     ./mbdb --googlephotos.enabled
     ```
-
-### Automated Daily Backup (GitHub Actions)
-
-This repository includes a GitHub Actions workflow to automatically download your photos every day and back them up directly to Google Photos, requiring no local server.
-
-To set this up for your own account:
-1.  **Fork this repository**: Click the "Fork" button at the top right of this page to create your own copy.
-2.  **Get a Google Photos Refresh Token**: Run the initialization command locally to authenticate and generate a refresh token.
-    ```bash
-    ./mbdb google-photos init
-    cat ./config/google_photos/refresh_token
-    ```
-3.  **Add Repository Secrets**: Go to your forked repository's **Settings** > **Secrets and variables** > **Actions** and add the following repository secrets:
-    *   `MYBRIGHTDAY_EMAIL`: Your MyBrightDay login email.
-    *   `MYBRIGHTDAY_PASSWORD`: Your MyBrightDay password.
-    *   `GOOGLE_PHOTOS_REFRESH_TOKEN`: The content of the refresh token file generated in step 2.
-4.  **Enable the Workflow**: Go to the **Actions** tab in your fork, select the "Daily Sync" workflow, and click "Enable workflow". It will now run automatically every day!
-5.  **Enable the Keep Alive Workflow**: In the same **Actions** tab, also enable the "Keep Alive" workflow. It runs weekly and exists only to keep the Daily Backup from being auto-disabled by GitHub after 60 days of repository inactivity.
 
 ## Configuration Overview
 
