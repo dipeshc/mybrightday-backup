@@ -74,14 +74,19 @@ type storeStats struct {
 	Skipped int
 }
 
-// authenticate is a variable so tests can stub the MyBrightDay auth flow.
-var authenticate = mybrightday.Authenticate
+// Seams so tests can stub the MyBrightDay auth flow and token persistence.
+var (
+	refreshAccess      = mybrightday.RefreshAccess
+	sessionFromAccess  = mybrightday.SessionFromAccess
+	saveRefreshToken   = mybrightday.SaveRefreshToken
+	deleteRefreshToken = mybrightday.DeleteRefreshToken
+)
 
 // Download fetches photos from the MyBrightDay API for the configured date range,
 // processes them, and saves them to all enabled storage backends.
 func Download(ctx context.Context, cfg *Config) error {
-	if cfg.MyBrightDay.Email == "" || cfg.MyBrightDay.Password == "" {
-		return errors.New("mybrightday_email and mybrightday_password are required — set them via flag, env var, file, or config.yaml")
+	if cfg.MyBrightDay.RefreshToken == "" {
+		return errors.New("not logged in to MyBrightDay — run 'mbdb login' first")
 	}
 
 	startDate, endDate, startTime, endTime, err := parseDates(cfg.Date)
@@ -91,7 +96,30 @@ func Download(ctx context.Context, cfg *Config) error {
 	slog.Debug("Processing range", "start_date", startDate, "end_date", endDate)
 
 	slog.Info("Authenticating with MyBrightDay...")
-	cookie, err := authenticate(ctx, cfg.MyBrightDay.Email, cfg.MyBrightDay.Password)
+	access, err := refreshAccess(ctx, cfg.MyBrightDay.RefreshToken)
+	if errors.Is(err, mybrightday.ErrRefreshTokenRejected) {
+		// The token is dead; keeping it would only fail again tomorrow. Clear
+		// it so the next run goes straight to asking for a login.
+		if delErr := deleteRefreshToken(); delErr != nil {
+			slog.Warn("Could not remove rejected MyBrightDay token", "path", mybrightday.RefreshTokenPath(), "error", delErr)
+		}
+		return fmt.Errorf("MyBrightDay rejected the stored token (%v). This happens when it expires or was used elsewhere. It has been cleared; run 'mbdb login' to log in again", err)
+	}
+	if err != nil {
+		return fmt.Errorf("mybrightday authentication: %w", err)
+	}
+
+	// Auth0 rotates the refresh token on every grant and the old one dies
+	// shortly after, so persist the new one before doing anything that could
+	// fail, including the rest of the login.
+	if access.RefreshToken != cfg.MyBrightDay.RefreshToken {
+		if err := saveRefreshToken(access.RefreshToken); err != nil {
+			return fmt.Errorf("saving rotated MyBrightDay token: %w", err)
+		}
+		slog.Debug("Stored rotated MyBrightDay token", "path", mybrightday.RefreshTokenPath())
+	}
+
+	cookie, err := sessionFromAccess(ctx, access)
 	if err != nil {
 		return fmt.Errorf("mybrightday authentication: %w", err)
 	}

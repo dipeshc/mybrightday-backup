@@ -9,14 +9,13 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 
+	"github.com/dipeshc/mybrightday-backup/internal/browser"
 	"github.com/dipeshc/mybrightday-backup/internal/httpx"
 	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos/credential"
 )
@@ -24,7 +23,7 @@ import (
 // Function hooks so tests can stub the browser launch and the interactive
 // auth flow.
 var (
-	openBrowserFn     = openBrowser
+	openBrowserFn     = browser.Open
 	performInitAuthFn = PerformInitAuth
 )
 
@@ -220,24 +219,4 @@ func generateRandomState() string {
 		return "state-fallback"
 	}
 	return hex.EncodeToString(b)
-}
-
-// openBrowser opens the specified URL in the user's default browser.
-func openBrowser(url string) error {
-	var cmd string
-	var args []string
-
-	switch runtime.GOOS {
-	case "windows":
-		cmd = "rundll32"
-		args = []string{"url.dll,FileProtocolHandler", url}
-	case "darwin":
-		cmd = "open"
-		args = []string{url}
-	default: // Linux and others
-		cmd = "xdg-open"
-		args = []string{url}
-	}
-
-	return exec.Command(cmd, args...).Start()
 }

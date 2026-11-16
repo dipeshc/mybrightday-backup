@@ -27,7 +27,7 @@ The tool parses these strings into start and end dates.
 
 ## 2. Authentication
 
-The tool then logs into MyBrightDay using the provided email and password. This involves a multi-stage flow to exchange Auth0 credentials for a MyBrightDay session cookie.
+The tool then authenticates with MyBrightDay using the refresh token saved by `mbdb login`. The token is exchanged at Auth0 for a short-lived access token; the login is then registered with the MyBrightDay gateway (as the Family Info Center web app does after a browser login) and the access token is exchanged for a MyBrightDay session cookie. Auth0 returns a new refresh token with every exchange and retires the old one shortly afterwards, so the new token is written back to `config/mybrightday/refresh_token` immediately, before any storage backend is initialised. A token that Auth0 rejects is deleted so that the next run asks for a login instead of failing again.
 
 ## 3. Storage Initialisation
 

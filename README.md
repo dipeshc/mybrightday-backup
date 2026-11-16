@@ -20,20 +20,27 @@ To set this up for your own account:
     cat ./config/google_photos/refresh_token
     ```
 3.  **Add Repository Secrets**: Go to your forked repository's **Settings** > **Secrets and variables** > **Actions** and add the following repository secrets:
-    *   `MYBRIGHTDAY_EMAIL`: Your MyBrightDay login email.
-    *   `MYBRIGHTDAY_PASSWORD`: Your MyBrightDay password.
     *   `GOOGLE_PHOTOS_REFRESH_TOKEN`: The content of the refresh token file generated in step 2.
-4.  **Enable the Workflow**: Go to the **Actions** tab in your fork, select the "Daily Sync" workflow, and click "Enable workflow". It will now run automatically every day!
-5.  **Enable the Keep Alive Workflow**: In the same **Actions** tab, also enable the "Keep Alive" workflow. It runs weekly and exists only to keep the Daily Backup from being auto-disabled by GitHub after 60 days of repository inactivity.
+    *   `MBD_STATE_KEY`: A random key that encrypts your MyBrightDay login between runs. Generate one with `openssl rand -hex 32` and paste the output exactly. It must be random, not a passphrase you made up: the encrypted login is stored in the repository's Actions cache, which anyone able to run a pull-request workflow in your fork can read, and only a strong key keeps it safe there.
+4.  **Enable the Workflows**: Go to the **Actions** tab in your fork and enable both the "Daily Backup" and "Keep Alive" workflows. Keep Alive runs weekly and exists only to stop GitHub auto-disabling the Daily Backup after 60 days of repository inactivity.
+5.  **Log in to MyBrightDay (two runs)**: Open "Daily Backup", click **Run workflow**, and run it with the boxes empty. It will stop with a message in the job summary containing a login link. Open the link, log in, and you will land on a page that says "This site can't be reached" — that is expected. Copy the whole address from the address bar (it starts with `http://localhost:4200/okta/callback?code=`), run the workflow again with that address pasted into the **callback_url** box, and that run does your first backup. The link is valid for ten minutes.
+
+That's it. Your login is kept encrypted in the repository's Actions cache and renewed on every run. If it ever expires or is lost, the next run shows the same login message and you repeat step 5. Only run the workflow from your default branch, and only paste an address you landed on yourself.
 
 ### Running Manually
 
 Download the latest binary for your operating system from the [Releases](https://github.com/dipeshc/mybrightday-backup/releases) page.
 
-1.  **Download Photos**:
-    Download photos for a specific date or range. You must provide your MyBrightDay login information.
+1.  **Log in to MyBrightDay** (once):
     ```bash
-    ./mbdb --mybrightday.email "user@example.com" --mybrightday.password "secret" --date=2026-06-15
+    ./mbdb login
+    ```
+    This opens your browser, waits for you to log in, and saves a token under `./config/mybrightday/`. The token is renewed automatically every time you run a backup. Use a separate login on each machine you run `mbdb` from — a token used from two places is revoked by Bright Horizons.
+
+1.  **Download Photos**:
+    Download photos for a specific date or range.
+    ```bash
+    ./mbdb --date=2026-06-15
     ```
 
     You can also specify date ranges or relative offsets:
@@ -69,7 +76,11 @@ For a full list of options and details on the configuration system, see the [Con
 ## Troubleshooting & Known Issues
 
 * **Google Photos Unverified App Warning**: By default, the application uses an embedded Google Cloud project for OAuth. Because this project is not officially verified by Google, you will see a warning screen saying "Google hasn't verified this app" during the `google-photos init` step. You can safely click "Advanced" and "Go to MyBrightDay Backup (unsafe)" to proceed. Alternatively, you can configure your own Custom Google Cloud Project (see the [Google Photos Guide](docs/google-photos.md)).
-* **Authentication Blocked by Web Session**: There is an intermittent bug where having an active login session on the MyBrightDay website can block the tool (and the daily GitHub Actions job) from authenticating. If your backup job suddenly starts failing with authentication errors, log into the MyBrightDay website in your browser, **manually log out**, and then trigger the job again.
+* **"MyBrightDay rejected the stored token"**: The login token expired or was used from another machine. The tool clears it. Locally, run `./mbdb login` again; on GitHub Actions, the same run writes the two-run login message to its job summary.
+* **Login message after a failed run**: If a run failed partway for an unrelated reason and the next one asks you to log in again, the previous good token may still be in an older cache entry. Under **Actions** > **Caches**, delete the newest `mbd-state-*` entries created after the last successful run, then run the workflow again before logging in afresh.
+* **"The login link has expired"**: Login links last ten minutes. Start again to get a fresh one (re-run the workflow with the `callback_url` box empty, or run `./mbdb login` again).
+* **"MyBrightDay login needs port 4200"**: Bright Horizons only allows the login to return to `localhost:4200`, so the port cannot be changed. Free the port, or follow the on-screen instructions to finish the login by pasting the address you land on.
+* **Why a password login no longer works**: Bright Horizons' login provider shows a CAPTCHA to anything that is not a real browser, which is why the tool now logs in through your browser once and keeps a renewable token instead of your password.
 
 ---
 

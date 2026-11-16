@@ -16,6 +16,8 @@ import (
 	"time"
 
 	mp4 "github.com/abema/go-mp4"
+
+	"github.com/dipeshc/mybrightday-backup/internal/mybrightday"
 )
 
 func TestParseDateString(t *testing.T) {
@@ -92,11 +94,46 @@ func TestParseDates(t *testing.T) {
 // not run in parallel.
 func stubAuth(t *testing.T, cookie string, err error) {
 	t.Helper()
-	original := authenticate
-	authenticate = func(ctx context.Context, email, password string) (string, error) {
+	stubRefresh(t, func(refreshToken string) (mybrightday.Access, error) {
+		return mybrightday.Access{Token: "fic-jwt", RefreshToken: refreshToken}, err
+	})
+	origSession := sessionFromAccess
+	sessionFromAccess = func(ctx context.Context, access mybrightday.Access) (string, error) {
 		return cookie, err
 	}
-	t.Cleanup(func() { authenticate = original })
+	t.Cleanup(func() { sessionFromAccess = origSession })
+}
+
+func stubRefresh(t *testing.T, fn func(refreshToken string) (mybrightday.Access, error)) {
+	t.Helper()
+	original := refreshAccess
+	refreshAccess = func(ctx context.Context, refreshToken string) (mybrightday.Access, error) {
+		return fn(refreshToken)
+	}
+	t.Cleanup(func() { refreshAccess = original })
+}
+
+// stubTokenStore replaces the token persistence seams and records what the
+// orchestration asked them to do.
+type tokenStoreCalls struct {
+	saved   []string
+	deleted int
+}
+
+func stubTokenStore(t *testing.T) *tokenStoreCalls {
+	t.Helper()
+	calls := &tokenStoreCalls{}
+	origSave, origDelete := saveRefreshToken, deleteRefreshToken
+	saveRefreshToken = func(token string) error {
+		calls.saved = append(calls.saved, token)
+		return nil
+	}
+	deleteRefreshToken = func() error {
+		calls.deleted++
+		return nil
+	}
+	t.Cleanup(func() { saveRefreshToken, deleteRefreshToken = origSave, origDelete })
+	return calls
 }
 
 func tinyJPEG(t *testing.T) []byte {
@@ -242,8 +279,7 @@ func startMBDServer(t *testing.T, opts mbdServerOptions) *httptest.Server {
 func testDownloadConfig(t *testing.T, baseURL string) *Config {
 	t.Helper()
 	cfg := NewDefaultConfig()
-	cfg.MyBrightDay.Email = "user@example.com"
-	cfg.MyBrightDay.Password = "hunter2"
+	cfg.MyBrightDay.RefreshToken = "stored-token"
 	cfg.MyBrightDay.BaseURL = baseURL
 	cfg.Date = "2024-01-15:2024-01-17"
 	cfg.Local.Directory = t.TempDir()
@@ -357,12 +393,12 @@ func TestDownloadErrors(t *testing.T) {
 		errContains string
 	}{
 		{
-			name: "missing credentials",
+			name: "not logged in",
 			setup: func(t *testing.T) *Config {
 				cfg := NewDefaultConfig()
 				return cfg
 			},
-			errContains: "required",
+			errContains: "mbdb login",
 		},
 		{
 			name: "invalid date",
@@ -377,7 +413,7 @@ func TestDownloadErrors(t *testing.T) {
 		{
 			name: "authentication failure",
 			setup: func(t *testing.T) *Config {
-				stubAuth(t, "", fmt.Errorf("bad password"))
+				stubAuth(t, "", fmt.Errorf("token endpoint returned status 502"))
 				return testDownloadConfig(t, "http://unused.test")
 			},
 			errContains: "mybrightday authentication",
@@ -461,5 +497,92 @@ func TestDownloadErrors(t *testing.T) {
 				t.Errorf("err = %v, want containing %q", err, tt.errContains)
 			}
 		})
+	}
+}
+
+func TestDownloadPersistsRotatedTokenBeforeStorageInit(t *testing.T) {
+	calls := stubTokenStore(t)
+	stubAuth(t, "session-cookie", nil)
+	stubRefresh(t, func(string) (mybrightday.Access, error) {
+		return mybrightday.Access{Token: "fic-jwt", RefreshToken: "rotated-token"}, nil
+	})
+
+	// Make storage initialisation fail so the run dies right after auth: the
+	// rotated token must already be on disk by then, or it is lost forever.
+	cfg := testDownloadConfig(t, "http://unused.test")
+	blocker := filepath.Join(t.TempDir(), "blocker")
+	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg.Local.Directory = filepath.Join(blocker, "photos")
+
+	err := Download(context.Background(), cfg)
+	if err == nil || !strings.Contains(err.Error(), "initialising local storage") {
+		t.Fatalf("err = %v, want storage init failure", err)
+	}
+	if len(calls.saved) != 1 || calls.saved[0] != "rotated-token" {
+		t.Errorf("saved tokens = %v, want [rotated-token] persisted before storage init", calls.saved)
+	}
+}
+
+func TestDownloadSkipsSaveWhenTokenUnchanged(t *testing.T) {
+	calls := stubTokenStore(t)
+	stubAuth(t, "session-cookie", nil) // echoes the input token as "rotated"
+	ts := startMBDServer(t, mbdServerOptions{})
+
+	if err := Download(context.Background(), testDownloadConfig(t, ts.URL)); err != nil {
+		t.Fatalf("Download: %v", err)
+	}
+	if len(calls.saved) != 0 {
+		t.Errorf("saved tokens = %v, want none when Auth0 did not rotate", calls.saved)
+	}
+}
+
+func TestDownloadRejectedTokenIsClearedWithGuidance(t *testing.T) {
+	calls := stubTokenStore(t)
+	stubRefresh(t, func(string) (mybrightday.Access, error) {
+		return mybrightday.Access{}, fmt.Errorf("%w: Unknown or invalid refresh token.", mybrightday.ErrRefreshTokenRejected)
+	})
+
+	err := Download(context.Background(), testDownloadConfig(t, "http://unused.test"))
+	if err == nil {
+		t.Fatal("Download succeeded with a rejected token")
+	}
+	for _, want := range []string{"rejected the stored token", "mbdb login", "Unknown or invalid refresh token"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("err = %v, want containing %q", err, want)
+		}
+	}
+	if strings.Contains(err.Error(), "stored-token") {
+		t.Errorf("err = %v, must not include the token", err)
+	}
+	if calls.deleted != 1 {
+		t.Errorf("deleted = %d, want the dead token removed exactly once", calls.deleted)
+	}
+	if len(calls.saved) != 0 {
+		t.Errorf("saved tokens = %v, want none after rejection", calls.saved)
+	}
+}
+
+func TestDownloadPersistsRotatedTokenEvenIfSessionFails(t *testing.T) {
+	calls := stubTokenStore(t)
+	stubRefresh(t, func(string) (mybrightday.Access, error) {
+		return mybrightday.Access{Token: "fic-jwt", RefreshToken: "rotated-token"}, nil
+	})
+	origSession := sessionFromAccess
+	sessionFromAccess = func(ctx context.Context, access mybrightday.Access) (string, error) {
+		return "", fmt.Errorf("MBD token exchange failed: status 401")
+	}
+	t.Cleanup(func() { sessionFromAccess = origSession })
+
+	err := Download(context.Background(), testDownloadConfig(t, "http://unused.test"))
+	if err == nil || !strings.Contains(err.Error(), "status 401") {
+		t.Fatalf("err = %v, want the session failure", err)
+	}
+	if len(calls.saved) != 1 || calls.saved[0] != "rotated-token" {
+		t.Errorf("saved tokens = %v, want [rotated-token]: the grant succeeded, so its rotation must not be lost", calls.saved)
+	}
+	if calls.deleted != 0 {
+		t.Errorf("deleted = %d, want 0: a gateway failure is not a rejected token", calls.deleted)
 	}
 }

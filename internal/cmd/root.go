@@ -11,7 +11,13 @@ import (
 	"github.com/dipeshc/mybrightday-backup/internal/app"
 	appconfig "github.com/dipeshc/mybrightday-backup/internal/config"
 	"github.com/dipeshc/mybrightday-backup/internal/logging"
+	"github.com/dipeshc/mybrightday-backup/internal/mybrightday"
 	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos"
+)
+
+const (
+	groupCore     = "core"
+	groupOptional = "optional"
 )
 
 var RootCmd = &cobra.Command{
@@ -26,7 +32,21 @@ var RootCmd = &cobra.Command{
 
 func init() {
 	registerFlags(RootCmd, appconfig.Analyze(app.NewDefaultConfig(), ""))
-	RootCmd.AddCommand(googlephotos.Command())
+
+	// Help lists core commands before optional integrations, each group
+	// alphabetical.
+	RootCmd.AddGroup(
+		&cobra.Group{ID: groupCore, Title: "Core Commands:"},
+		&cobra.Group{ID: groupOptional, Title: "Optional Integrations:"},
+	)
+
+	login := mybrightday.LoginCommand()
+	login.GroupID = groupCore
+	RootCmd.AddCommand(login)
+
+	gp := googlephotos.Command()
+	gp.GroupID = groupOptional
+	RootCmd.AddCommand(gp)
 }
 
 func Execute() error {

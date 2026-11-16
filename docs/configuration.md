@@ -6,9 +6,9 @@ MyBrightDay Backup uses a hierarchical, reflection-based configuration system. T
 
 Configuration values are resolved in the following priority order:
 
-1.  **CLI Flags**: Highest priority. (e.g., `--mybrightday.email`)
-2.  **Environment Variables**: Upper-case version of the configuration key. (e.g., `MYBRIGHTDAY_EMAIL`)
-3.  **Config Files Directory**: The tool looks for files at `./config/<section>/<key>` by default. Override the base directory by setting `CONFIG_FILES_DIR`. (e.g., `mybrightday.password` -> `./config/mybrightday/password`)
+1.  **CLI Flags**: Highest priority. (e.g., `--googlephotos.albumname`)
+2.  **Environment Variables**: Upper-case version of the configuration key. (e.g., `GOOGLE_PHOTOS_ALBUM_NAME`)
+3.  **Config Files Directory**: The tool looks for files at `./config/<section>/<key>` by default. Override the base directory by setting `CONFIG_FILES_DIR`. (e.g., `mybrightday.refresh_token` -> `./config/mybrightday/refresh_token`)
 4.  **Configuration File**: YAML file (default: `config.yaml`).
 5.  **Defaults**: Hardcoded default values in the application.
 
@@ -20,8 +20,7 @@ Configuration keys are mapped to files by converting the nested YAML structure i
 
 | YAML key | Config file path |
 |---|---|
-| `mybrightday.email` | `./config/mybrightday/email` |
-| `mybrightday.password` | `./config/mybrightday/password` |
+| `mybrightday.refresh_token` | `./config/mybrightday/refresh_token` |
 | `google_photos.refresh_token` | `./config/google_photos/refresh_token` |
 
 The `./config/` directory is listed in `.gitignore` to prevent secrets from being accidentally committed.
@@ -67,8 +66,7 @@ The following tables detail the available configuration options.
 
 | Flag | Env Var | YAML Key | Default | Description |
 |------|---------|----------|---------|-------------|
-| `--mybrightday.email` | `MYBRIGHTDAY_EMAIL` | `mybrightday.email` | | MyBrightDay login email |
-| `--mybrightday.password` | `MYBRIGHTDAY_PASSWORD` | `mybrightday.password` | | MyBrightDay login password |
+| `--mybrightday.refreshtoken` | `MYBRIGHTDAY_REFRESH_TOKEN` | `mybrightday.refresh_token` | | Refresh token (set via `mbdb login`). Rotated on every run: the tool rewrites `./config/mybrightday/refresh_token` with the new token, so supply it via that file rather than a flag or env var if you want rotation to persist. |
 | `--mybrightday.baseurl` | `MYBRIGHTDAY_BASE_URL` | `mybrightday.base_url` | `https://mybrightday.brighthorizons.com` | MyBrightDay API base URL |
 
 ### Local Storage

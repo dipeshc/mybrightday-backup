@@ -49,8 +49,7 @@ func runRoot(t *testing.T, args ...string) error {
 	t.Helper()
 	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
 	t.Setenv("CONFIG", "")
-	t.Setenv("MYBRIGHTDAY_EMAIL", "")
-	t.Setenv("MYBRIGHTDAY_PASSWORD", "")
+	t.Setenv("MYBRIGHTDAY_REFRESH_TOKEN", "")
 
 	originalLogger := slog.Default()
 	var out bytes.Buffer
@@ -80,11 +79,32 @@ func TestExecuteHelp(t *testing.T) {
 	}
 }
 
-func TestRunDownloadMissingCredentials(t *testing.T) {
+func TestRunDownloadNotLoggedIn(t *testing.T) {
 	missingConfig := filepath.Join(t.TempDir(), "absent.yaml")
 	err := runRoot(t, "--config", missingConfig)
-	if err == nil || !strings.Contains(err.Error(), "required") {
-		t.Errorf("err = %v, want missing-credentials error", err)
+	if err == nil || !strings.Contains(err.Error(), "mbdb login") {
+		t.Errorf("err = %v, want not-logged-in error pointing at mbdb login", err)
+	}
+}
+
+func TestHelpListsCoreCommandsBeforeOptional(t *testing.T) {
+	var out bytes.Buffer
+	RootCmd.SetOut(&out)
+	t.Cleanup(func() { RootCmd.SetOut(nil); RootCmd.SetArgs(nil) })
+	RootCmd.SetArgs([]string{"--help"})
+	if err := Execute(); err != nil {
+		t.Fatalf("Execute --help: %v", err)
+	}
+	help := out.String()
+	core := strings.Index(help, "Core Commands:")
+	login := strings.Index(help, "  login")
+	optional := strings.Index(help, "Optional Integrations:")
+	gp := strings.Index(help, "  google-photos")
+	if core < 0 || login < 0 || optional < 0 || gp < 0 {
+		t.Fatalf("help missing expected sections:\n%s", help)
+	}
+	if !(core < login && login < optional && optional < gp) {
+		t.Errorf("help order wrong: core=%d login=%d optional=%d google-photos=%d\n%s", core, login, optional, gp, help)
 	}
 }
 

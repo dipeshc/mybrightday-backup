@@ -371,7 +371,8 @@ func (c *Client) fetchSignedURL(ctx context.Context, signedURL string) ([]byte, 
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("requesting signed url: %w", err)
+		// The presigned URL is itself a credential; keep it out of the error.
+		return nil, fmt.Errorf("requesting signed url: %w", withoutURL(err))
 	}
 	defer resp.Body.Close()
 

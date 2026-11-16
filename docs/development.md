@@ -13,7 +13,8 @@ mybrightday-backup/
 │   ├── cmd/            # Cobra root command (the download action)
 │   ├── config/         # Reflection-based config analysis, resolution, and YAML loading
 │   ├── logging/        # Logging config and slog setup
-│   ├── mybrightday/    # MyBrightDay auth flow, API client, and domain config
+│   ├── browser/        # Opens URLs in the user's default browser
+│   ├── mybrightday/    # MyBrightDay login + auth, API client, domain config, "login" command
 │   ├── processor/      # Image conversion (PNG→JPEG) and EXIF metadata injection
 │   └── storage/
 │       ├── storage.go          # Storage interface, Photo type, BaseConfig
