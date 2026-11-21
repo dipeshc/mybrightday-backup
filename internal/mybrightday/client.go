@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -100,6 +101,37 @@ func NewClient(baseURL, cookie string) *Client {
 		},
 		baseURL: baseURL,
 		cookie:  cookie,
+	}
+}
+
+// CheckSession verifies the session cookie against the API. A 401 means the
+// session has expired or was revoked (the API answers 401 for a missing,
+// garbage, or stale cookie alike) and maps to ErrSessionRejected. A 403 is
+// deliberately not treated as rejection: the API does not use it for
+// sessions, and a WAF block in front of it must not destroy a good one.
+func (c *Client) CheckSession(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.baseURL+"/api/v2/user/profile", nil)
+	if err != nil {
+		return fmt.Errorf("creating session check request: %w", err)
+	}
+	req.Header.Set("Cookie", c.cookie)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("session check: %w", err)
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+
+	switch resp.StatusCode {
+	case http.StatusOK:
+		return nil
+	case http.StatusUnauthorized:
+		return ErrSessionRejected
+	case http.StatusForbidden:
+		return errors.New("session check was refused (status 403); the session was kept since this usually means a temporary block rather than an expired login")
+	default:
+		return fmt.Errorf("session check returned status %d", resp.StatusCode)
 	}
 }
 

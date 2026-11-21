@@ -32,10 +32,12 @@ The application uses OAuth 2.0 to interact with the Google Photos API. It reques
 
 The OAuth flow is split in two:
 
-*   **One-time setup** (`mbdb google-photos init`) drives the interactive browser flow with `access_type=offline` and `prompt=consent`, then persists **only** the long-lived refresh token to disk.
+*   **One-time setup** drives the browser flow with `access_type=offline`, `prompt=consent`, and PKCE, then persists **only** the long-lived refresh token to disk. It happens automatically the first time a run has Google Photos enabled and no token: at a terminal the browser opens; without one (the GitHub workflow, a server) the run prints a sign-in link and the login is completed by a later run with `--callback-url`. `mbdb google-photos init` runs the same browser flow explicitly.
 *   **Each run** uses the refresh token to mint a short-lived access token in memory. The access token is never written to disk.
 
 ### Initial Setup
+
+On GitHub Actions nothing needs to be done locally: the Daily Backup workflow's first run puts the Google sign-in link in its job summary and the second run, given the address you land on, saves the token into the encrypted Actions cache (see the README). Locally, either enable the destination and let the first run sign you in, or run the explicit command:
 
 To authenticate the application with your Google account, run the following command:
 

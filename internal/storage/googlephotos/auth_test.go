@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"golang.org/x/oauth2"
 
@@ -108,8 +109,14 @@ func completeAuthInBrowser(t *testing.T, query string) func(string) error {
 			t.Error("auth URL missing redirect_uri")
 			return nil
 		}
+		// Echo the state back as a real provider would; a forged callback
+		// without it must be ignored by the flow.
+		state := u.Query().Get("state")
+		if u.Query().Get("code_challenge_method") != "S256" || u.Query().Get("code_challenge") == "" {
+			t.Error("auth URL missing PKCE challenge")
+		}
 		go func() {
-			resp, err := http.Get(redirect + "/?" + query)
+			resp, err := http.Get(redirect + "?" + query + "&state=" + state)
 			if err == nil {
 				resp.Body.Close()
 			}
@@ -126,6 +133,9 @@ func TestGetTokenFromWeb(t *testing.T) {
 			}
 			if got := r.PostForm.Get("code"); got != "test-code" {
 				t.Errorf("code = %q, want test-code", got)
+			}
+			if r.PostForm.Get("code_verifier") == "" {
+				t.Error("exchange missing PKCE code_verifier")
 			}
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]any{
@@ -160,6 +170,27 @@ func TestGetTokenFromWeb(t *testing.T) {
 		_, err := getTokenFromWeb(context.Background(), cfg)
 		if err == nil || !strings.Contains(err.Error(), "access_denied") {
 			t.Errorf("err = %v, want access_denied", err)
+		}
+	})
+
+	t.Run("forged callback without the state is ignored", func(t *testing.T) {
+		origWait := interactiveWaitFor
+		interactiveWaitFor = 300 * time.Millisecond
+		t.Cleanup(func() { interactiveWaitFor = origWait })
+		stubBrowser(t, func(authURL string) error {
+			u, _ := url.Parse(authURL)
+			go func() {
+				resp, err := http.Get(u.Query().Get("redirect_uri") + "?code=attacker-code&state=forged")
+				if err == nil {
+					resp.Body.Close()
+				}
+			}()
+			return nil
+		})
+		cfg := &oauth2.Config{Endpoint: oauth2.Endpoint{AuthURL: "https://auth.test/auth", TokenURL: "https://unused.test"}}
+		_, err := getTokenFromWeb(context.Background(), cfg)
+		if err == nil || !strings.Contains(err.Error(), "no login received") {
+			t.Errorf("err = %v, want timeout: a forged callback must not complete the login", err)
 		}
 	})
 
@@ -279,15 +310,4 @@ func TestInit(t *testing.T) {
 			t.Errorf("err = %v, want auth failure", err)
 		}
 	})
-}
-
-func TestGenerateRandomState(t *testing.T) {
-	a := generateRandomState()
-	b := generateRandomState()
-	if a == b {
-		t.Error("two states are identical")
-	}
-	if len(a) != 32 {
-		t.Errorf("len = %d, want 32 hex chars", len(a))
-	}
 }

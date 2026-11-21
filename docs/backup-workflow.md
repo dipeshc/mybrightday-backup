@@ -27,7 +27,9 @@ The tool parses these strings into start and end dates.
 
 ## 2. Authentication
 
-The tool then authenticates with MyBrightDay using the refresh token saved by `mbdb login`. The token is exchanged at Auth0 for a short-lived access token; the login is then registered with the MyBrightDay gateway (as the Family Info Center web app does after a browser login) and the access token is exchanged for a MyBrightDay session cookie. Auth0 returns a new refresh token with every exchange and retires the old one shortly afterwards, so the new token is written back to `config/mybrightday/refresh_token` immediately, before any storage backend is initialised. A token that Auth0 rejects is deleted so that the next run asks for a login instead of failing again.
+The tool checks that every login it needs is present: a MyBrightDay session always, and a Google Photos token when that destination is enabled. Anything missing is obtained right there: at a terminal the browser opens and the run waits for you to sign in; without a terminal the run prints a login link per provider, records the pending login under the config directory, and exits with status 3 so a later run can finish the login with `--callback-url`.
+
+The MyBrightDay session is then validated with one API call. A 401 means it expired (about a year after login) or was revoked; the session is cleared and the run asks for a login again. A session within thirty days of its embedded expiry logs a warning. The session cookie never changes, so nothing is written back after a successful run.
 
 ## 3. Storage Initialisation
 

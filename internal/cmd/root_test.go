@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bytes"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
+	"github.com/dipeshc/mybrightday-backup/internal/app"
 	appconfig "github.com/dipeshc/mybrightday-backup/internal/config"
 )
 
@@ -49,7 +51,7 @@ func runRoot(t *testing.T, args ...string) error {
 	t.Helper()
 	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
 	t.Setenv("CONFIG", "")
-	t.Setenv("MYBRIGHTDAY_REFRESH_TOKEN", "")
+	t.Setenv("MYBRIGHTDAY_SESSION", "")
 
 	originalLogger := slog.Default()
 	var out bytes.Buffer
@@ -68,6 +70,9 @@ func runRoot(t *testing.T, args ...string) error {
 		_ = f.Value.Set(f.DefValue)
 		f.Changed = false
 	})
+	// Setting a string-array flag to its default appends a literal "[]";
+	// clear the bound variable directly instead.
+	callbackURLs = nil
 
 	RootCmd.SetArgs(args)
 	return Execute()
@@ -79,15 +84,17 @@ func TestExecuteHelp(t *testing.T) {
 	}
 }
 
-func TestRunDownloadNotLoggedIn(t *testing.T) {
+func TestRunDownloadNotLoggedInWithoutTerminal(t *testing.T) {
+	// Tests never run at a terminal, so a missing session issues a login link
+	// and reports that a login is required.
 	missingConfig := filepath.Join(t.TempDir(), "absent.yaml")
 	err := runRoot(t, "--config", missingConfig)
-	if err == nil || !strings.Contains(err.Error(), "mbdb login") {
-		t.Errorf("err = %v, want not-logged-in error pointing at mbdb login", err)
+	if !errors.Is(err, app.ErrLoginRequired) {
+		t.Errorf("err = %v, want ErrLoginRequired", err)
 	}
 }
 
-func TestHelpListsCoreCommandsBeforeOptional(t *testing.T) {
+func TestHelpMentionsCallbackURL(t *testing.T) {
 	var out bytes.Buffer
 	RootCmd.SetOut(&out)
 	t.Cleanup(func() { RootCmd.SetOut(nil); RootCmd.SetArgs(nil) })
@@ -95,16 +102,10 @@ func TestHelpListsCoreCommandsBeforeOptional(t *testing.T) {
 	if err := Execute(); err != nil {
 		t.Fatalf("Execute --help: %v", err)
 	}
-	help := out.String()
-	core := strings.Index(help, "Core Commands:")
-	login := strings.Index(help, "  login")
-	optional := strings.Index(help, "Optional Integrations:")
-	gp := strings.Index(help, "  google-photos")
-	if core < 0 || login < 0 || optional < 0 || gp < 0 {
-		t.Fatalf("help missing expected sections:\n%s", help)
-	}
-	if !(core < login && login < optional && optional < gp) {
-		t.Errorf("help order wrong: core=%d login=%d optional=%d google-photos=%d\n%s", core, login, optional, gp, help)
+	for _, want := range []string{"--callback-url", "google-photos", "--mybrightday.session"} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("help lacks %q:\n%s", want, out.String())
+		}
 	}
 }
 

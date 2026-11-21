@@ -1,21 +1,20 @@
 name: Daily Backup
 
-# MyBrightDay authentication
-# --------------------------
-# The job authenticates with a refresh token rather than a password. The token
-# rotates on every run, so it has to be carried from one run to the next: it is
-# kept in the Actions cache, encrypted with the MBD_STATE_KEY secret. Nothing
-# else in the repository ever holds it.
+# How this job logs in
+# --------------------
+# mbdb keeps two logins under its config directory: a MyBrightDay session
+# (valid for about a year) and a Google Photos refresh token. Both are made
+# through your browser, once. This job keeps that directory between runs in
+# the Actions cache, encrypted with the MBD_STATE_KEY secret. Nothing else in
+# the repository ever holds them.
 #
-# First-time setup (and recovery if the token is ever lost or expires) takes two
-# manual runs: the first prints a login link in the job summary, the second is
-# given the address the browser landed on via the `callback_url` input. See the
-# README for the step-by-step version.
+# First-time setup, and renewal when a login expires, takes two manual runs:
+# the first writes the login links to the job summary, the second is given the
+# addresses the browser landed on via the callback inputs. See the README.
 #
-# Only run this workflow on the default branch. Cache writes are scoped to the
-# branch that made them, so a run on another branch would rotate the token into
-# a cache entry the default branch cannot see, and the default branch's next run
-# would present a dead token.
+# Only run this workflow on the default branch: cache writes are scoped to the
+# branch that made them, so a run elsewhere would store the logins where the
+# scheduled runs cannot find them.
 
 on:
   # Runs at 02:00 UTC (7 PM US/Pacific).
@@ -27,16 +26,18 @@ on:
         description: 'Override date or date range (YYYY-MM-DD, -N, +N, or -N:+N). Leave blank to use the repository DATE variable, or "-7:+3" if unset.'
         required: false
         type: string
-      callback_url:
-        description: 'First-time setup or recovery only: paste the address you landed on after logging in (starts with http://localhost:4200/okta/callback?code=). Get the link from the previous run''s summary.'
+      mybrightday_callback_url:
+        description: 'Setup or renewal only: the address you landed on after logging in to MyBrightDay (starts with http://localhost:4200/okta/callback?code=).'
+        required: false
+        type: string
+      google_callback_url:
+        description: 'Setup or renewal only: the address you landed on after signing in to Google (starts with http://localhost:4201/google/callback?code=).'
         required: false
         type: string
 
 permissions:
   contents: read
 
-# Two runs presenting the same refresh token at once would trip Auth0's reuse
-# detection and revoke it, so runs queue rather than overlap.
 concurrency:
   group: daily-backup
   cancel-in-progress: false
@@ -51,7 +52,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       STATE_FILE: mbd-state.enc
-      STATE_DIR: config/mybrightday
+      PENDING_FILE: mbd-pending.enc
+      STATE_DIR: config
     steps:
       - name: Refuse to run off the default branch
         if: ${{ github.event_name == 'workflow_dispatch' && github.ref_name != github.event.repository.default_branch }}
@@ -76,7 +78,7 @@ jobs:
               echo '## MBD_STATE_KEY is not a valid key'
             fi
             echo
-            echo 'This workflow keeps your MyBrightDay login encrypted between runs and needs a random key to do it.'
+            echo 'This workflow keeps your logins encrypted between runs and needs a random key to do it.'
             echo 'Generate one with `openssl rand -hex 32` (64 hex characters; a passphrase you made up is not safe here)'
             echo 'and add it as a repository secret named `MBD_STATE_KEY` (Settings > Secrets and variables > Actions),'
             echo 'then run the workflow again.'
@@ -105,8 +107,11 @@ jobs:
           chmod +x mbdb
 
       # Cache entries are immutable, so every run saves under its own key and
-      # the next run restores the newest one by prefix.
-      - name: Restore MyBrightDay state
+      # the next run restores the newest one by prefix. Logins and in-progress
+      # (pending) logins live in separate entries: the logins entry is only
+      # ever written when a login exists, so a run that merely issued links can
+      # never supersede a good one.
+      - name: Restore logins
         uses: actions/cache/restore@v4
         with:
           path: ${{ env.STATE_FILE }}
@@ -114,158 +119,173 @@ jobs:
           restore-keys: |
             mbd-state-
 
-      - name: Decrypt MyBrightDay state
+      - name: Restore pending logins
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.PENDING_FILE }}
+          key: mbd-pending-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            mbd-pending-
+
+      - name: Decrypt logins
         id: decrypt
         env:
           MBD_STATE_KEY: ${{ secrets.MBD_STATE_KEY }}
         run: |
           mkdir -p "$STATE_DIR"
-          if [ ! -f "$STATE_FILE" ]; then
-            echo "No stored MyBrightDay state yet."
-            exit 0
-          fi
-          if openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:MBD_STATE_KEY -in "$STATE_FILE" 2>/dev/null \
-               | tar -xzf - -C "$STATE_DIR"; then
-            echo "Restored MyBrightDay state."
+          if [ -f "$STATE_FILE" ]; then
+            if openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:MBD_STATE_KEY -in "$STATE_FILE" 2>/dev/null \
+                 | tar -xzf - -C "$STATE_DIR"; then
+              echo "Restored stored logins."
+            else
+              rm -rf "${STATE_DIR:?}"/*
+              echo "Stored logins could not be decrypted (was MBD_STATE_KEY changed?). Starting fresh."
+              echo '> Stored logins could not be decrypted, so this run starts fresh. If you changed `MBD_STATE_KEY`, that is expected.' >> "$GITHUB_STEP_SUMMARY"
+            fi
           else
-            rm -rf "${STATE_DIR:?}"/*
-            echo "Stored MyBrightDay state could not be decrypted (was MBD_STATE_KEY changed?). Starting fresh."
-            echo '> Stored MyBrightDay state could not be decrypted, so this run starts fresh. If you changed `MBD_STATE_KEY`, that is expected.' >> "$GITHUB_STEP_SUMMARY"
+            echo "No stored logins yet."
           fi
-          rm -f "$STATE_FILE"
-          # The token is not a registered secret, so tell the runner to mask it
-          # in case anything ever echoes it.
-          if [ -s "$STATE_DIR/refresh_token" ]; then
-            echo "::add-mask::$(cat "$STATE_DIR/refresh_token")"
+          if [ -f "$PENDING_FILE" ]; then
+            # Pending logins are only useful for ten minutes; a failure here just
+            # means a fresh link will be issued.
+            openssl enc -d -aes-256-cbc -pbkdf2 -iter 600000 -pass env:MBD_STATE_KEY -in "$PENDING_FILE" 2>/dev/null \
+              | tar -xzf - -C "$STATE_DIR" 2>/dev/null || true
           fi
-
-      - name: Complete MyBrightDay login
-        if: ${{ inputs.callback_url != '' }}
-        env:
-          CALLBACK_URL: ${{ inputs.callback_url }}
-        run: |
-          if [ -s "$STATE_DIR/refresh_token" ] && [ ! -f "$STATE_DIR/pkce_state" ]; then
-            echo "Already logged in; ignoring callback_url."
-            echo '> Already logged in to MyBrightDay; the `callback_url` input was ignored.' >> "$GITHUB_STEP_SUMMARY"
-            exit 0
-          fi
-          if ./mbdb login --callback-url "$CALLBACK_URL" 2> login-error.txt; then
-            echo "::add-mask::$(cat "$STATE_DIR/refresh_token")"
-            echo "Logged in to MyBrightDay."
-            echo '## Logged in to MyBrightDay' >> "$GITHUB_STEP_SUMMARY"
-            echo 'The token is saved. This run continues with the backup, and future runs need no action.' >> "$GITHUB_STEP_SUMMARY"
-          else
-            {
-              echo '## Login did not complete'
-              echo
-              cat login-error.txt
-              echo
-              echo 'Re-run the workflow with the `callback_url` box empty to get a fresh login link.'
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error::MyBrightDay login did not complete. See the job summary."
-            exit 1
-          fi
-
-      - name: Check for a stored token
-        id: token
-        run: |
-          if [ -s "$STATE_DIR/refresh_token" ]; then
-            echo "present=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "present=false" >> "$GITHUB_OUTPUT"
-            echo "MyBrightDay token not found. A login link will be written to the job summary."
-          fi
+          rm -f "$STATE_FILE" "$PENDING_FILE"
+          # The logins are not registered secrets, so tell the runner to mask
+          # them in case anything ever echoes them.
+          for f in "$STATE_DIR/mybrightday/session" "$STATE_DIR/google_photos/refresh_token"; do
+            if [ -s "$f" ]; then
+              echo "::add-mask::$(cat "$f")"
+            fi
+          done
 
       - name: Run MyBrightDay Backup
-        if: ${{ steps.token.outputs.present == 'true' }}
+        id: run
         env:
+          # Optional, for setups made before logins were stored by this
+          # workflow: a Google token kept as a secret is used until a login is
+          # stored, after which the stored login wins (see below).
           GOOGLE_PHOTOS_REFRESH_TOKEN: ${{ secrets.GOOGLE_PHOTOS_REFRESH_TOKEN }}
           DATE_ARG: ${{ inputs.date || vars.DATE || '-7:+3' }}
+          MBD_CALLBACK: ${{ inputs.mybrightday_callback_url }}
+          GOOGLE_CALLBACK: ${{ inputs.google_callback_url }}
         run: |
-          ./mbdb \
+          # A login stored by this workflow wins over the legacy secret, so a
+          # dead secret cannot keep overriding a fresh login.
+          if [ -s "$STATE_DIR/google_photos/refresh_token" ]; then
+            unset GOOGLE_PHOTOS_REFRESH_TOKEN
+          fi
+          args=()
+          if [ -n "$MBD_CALLBACK" ]; then
+            args+=(--callback-url "$MBD_CALLBACK")
+          fi
+          if [ -n "$GOOGLE_CALLBACK" ]; then
+            args+=(--callback-url "$GOOGLE_CALLBACK")
+          fi
+
+          set +e
+          ./mbdb "${args[@]}" \
             --date "$DATE_ARG" \
             --local.enabled=false \
             --googlephotos.enabled=true \
             --logging.level=INFO \
-            --logging.format=text-full
+            --logging.format=text-full 2>&1 | tee run.log
+          rc=${PIPESTATUS[0]}
+          set -e
 
-      # Runs after the backup so that a token the backup found dead (and
-      # deleted) leads straight to a fresh login link in this same run.
-      - name: Start MyBrightDay login if needed
-        id: login
-        if: ${{ always() && steps.decrypt.outcome == 'success' }}
-        run: |
-          if [ -s "$STATE_DIR/refresh_token" ]; then
-            echo "needs_login=false" >> "$GITHUB_OUTPUT"
+          for f in "$STATE_DIR/mybrightday/session" "$STATE_DIR/google_photos/refresh_token"; do
+            if [ -s "$f" ]; then
+              echo "::add-mask::$(cat "$f")"
+            fi
+          done
+
+          if grep -q "session expires soon" run.log; then
+            {
+              echo '> **Your MyBrightDay login expires soon.** Run this workflow by hand before then and follow the login steps it shows, so the backups keep running. Details are in the log.'
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          if [ "$rc" -eq 3 ]; then
+            mbd_url=$(grep -m1 '^login-url mybrightday ' run.log | cut -d' ' -f3- || true)
+            google_url=$(grep -m1 '^login-url google_photos ' run.log | cut -d' ' -f3- || true)
+            {
+              echo '## Log in to connect your accounts'
+              echo
+              echo 'This run stopped before backing anything up because a login is needed.'
+              echo 'A few steps, about a minute, and you have ten minutes before the links expire.'
+              echo
+              echo '1. Open each link below and sign in. After each one you will land on a page that says'
+              echo '   "This site can'"'"'t be reached". That is expected: copy the whole address from the address bar.'
+              echo
+              if [ -n "$mbd_url" ]; then
+                echo "   - MyBrightDay (log in with your MyBrightDay email and password): $mbd_url"
+                echo '     The address you land on starts with `http://localhost:4200/okta/callback?code=`'
+              fi
+              if [ -n "$google_url" ]; then
+                echo "   - Google Photos (choose the Google account to back up to): $google_url"
+                echo '     The address you land on starts with `http://localhost:4201/google/callback?code=`'
+                echo '     Google may warn that the app is unverified; choose Advanced, then continue.'
+              fi
+              echo
+              echo '2. Come back to Actions, choose "Daily Backup", click "Run workflow", paste each address'
+              echo '   into its box (`mybrightday_callback_url`, `google_callback_url`), and run it.'
+              echo
+              echo 'Only paste addresses you landed on yourself, after signing in with your own accounts.'
+              echo 'That run saves the logins and does the backup. You will not need to do this again until a login'
+              echo 'expires (about a year for MyBrightDay), when this same message will come back.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "needs_login=true" >> "$GITHUB_OUTPUT"
+            echo "Login needed. See the job summary."
             exit 0
           fi
-          LOGIN_URL=$(./mbdb login --print-url)
-          {
-            echo '## MyBrightDay needs you to log in once'
-            echo
-            echo 'No MyBrightDay token is stored, so this run stopped before backing anything up.'
-            echo 'Three steps, about a minute, and you have ten minutes before the link expires.'
-            echo
-            echo '1. Open this link and log in with your MyBrightDay email and password:'
-            echo
-            echo "   $LOGIN_URL"
-            echo
-            echo '2. After logging in you will land on a page that says "This site can'"'"'t be reached".'
-            echo '   That is expected. Copy the whole address from the address bar. It starts with'
-            echo '   `http://localhost:4200/okta/callback?code=`'
-            echo
-            echo '3. Come back to Actions, choose "Daily Backup", click "Run workflow", paste the'
-            echo '   address into the `callback_url` box, and run it.'
-            echo
-            echo 'Only paste an address that you landed on yourself, after logging in with your own account.'
-            echo
-            echo 'That run will save the token and do the backup. You will not need to do this again'
-            echo 'unless the token expires, in which case this same message will come back.'
-          } >> "$GITHUB_STEP_SUMMARY"
-          echo "needs_login=true" >> "$GITHUB_OUTPUT"
-          echo "MyBrightDay token not found. See the job summary for a three-step login."
+          echo "needs_login=false" >> "$GITHUB_OUTPUT"
+          exit "$rc"
 
-      # Always runs after a successful decrypt, even if the backup failed: the
-      # token may have rotated during this run and must not be lost. It never
-      # runs when decrypt did not complete, so an earlier failure cannot replace
-      # the newest good cache entry with an empty one.
-      - name: Encrypt MyBrightDay state
+      # Always runs after a successful decrypt, even if the backup failed, so a
+      # login completed this run is kept. It never runs when decrypt did not
+      # complete, so an earlier failure cannot replace the newest good cache
+      # entry. The logins entry is written only when at least one login exists.
+      - name: Encrypt logins
         id: encrypt
         if: ${{ always() && steps.decrypt.outcome == 'success' }}
         env:
           MBD_STATE_KEY: ${{ secrets.MBD_STATE_KEY }}
         run: |
-          if [ ! -d "$STATE_DIR" ] || [ -z "$(ls -A "$STATE_DIR")" ]; then
-            echo "Nothing to save."
-            exit 0
+          [ -d "$STATE_DIR" ] || exit 0
+          if [ -s "$STATE_DIR/mybrightday/session" ] || [ -s "$STATE_DIR/google_photos/refresh_token" ]; then
+            tar -C "$STATE_DIR" --exclude='pending_login' -czf - . \
+              | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:MBD_STATE_KEY -out "$STATE_FILE"
+            echo "save_state=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No logins to save."
           fi
-          if [ -s "$STATE_DIR/refresh_token" ]; then
-            echo "::add-mask::$(cat "$STATE_DIR/refresh_token")"
-          fi
-          tar -C "$STATE_DIR" -czf - . \
-            | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:MBD_STATE_KEY -out "$STATE_FILE"
+          # Always write a pending entry, empty when no login is pending, so a
+          # consumed login does not keep being restored from an older entry.
+          (cd "$STATE_DIR" && find . -type f -name pending_login -print0 | tar -czf - --null -T -) \
+            | openssl enc -aes-256-cbc -pbkdf2 -iter 600000 -salt -pass env:MBD_STATE_KEY -out "$PENDING_FILE"
+          echo "save_pending=true" >> "$GITHUB_OUTPUT"
           rm -rf "${STATE_DIR:?}"/*
-          echo "save=true" >> "$GITHUB_OUTPUT"
 
-      - name: Save MyBrightDay state
+      - name: Save logins
         id: save
-        if: ${{ always() && steps.encrypt.outputs.save == 'true' }}
+        if: ${{ always() && steps.encrypt.outputs.save_state == 'true' }}
         uses: actions/cache/save@v4
         with:
           path: ${{ env.STATE_FILE }}
           key: mbd-state-${{ github.run_id }}-${{ github.run_attempt }}
 
-      # A failed save after the backup rotated the token would strand the only
-      # copy on this runner, so try once more under a fresh key.
-      - name: Save MyBrightDay state (retry)
-        if: ${{ always() && steps.encrypt.outputs.save == 'true' && steps.save.outcome == 'failure' }}
+      - name: Save pending logins
+        id: save_pending
+        if: ${{ always() && steps.encrypt.outputs.save_pending == 'true' }}
         uses: actions/cache/save@v4
         with:
-          path: ${{ env.STATE_FILE }}
-          key: mbd-state-${{ github.run_id }}-${{ github.run_attempt }}-retry
+          path: ${{ env.PENDING_FILE }}
+          key: mbd-pending-${{ github.run_id }}-${{ github.run_attempt }}
 
       - name: Fail if login is needed
-        if: ${{ always() && steps.login.outputs.needs_login == 'true' }}
+        if: ${{ always() && steps.run.outputs.needs_login == 'true' }}
         run: |
-          echo "::error::MyBrightDay login needed. Open the job summary and follow the three steps."
+          echo "::error::Login needed. Open the job summary and follow the steps."
           exit 1

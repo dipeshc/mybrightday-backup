@@ -3,7 +3,6 @@ package mybrightday
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -12,10 +11,10 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/dipeshc/mybrightday-backup/internal/oauthlogin"
 )
 
 const (
@@ -23,7 +22,8 @@ const (
 	ficAudience = "https://ShareservicesAPI"
 	userAgent   = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.7727.138 Safari/537.36"
 
-	refreshTokenFile = "refresh_token"
+	configSection = "mybrightday"
+	sessionFile   = "session"
 )
 
 // Endpoint bases are variables so tests can point the flow at a fake server.
@@ -33,25 +33,17 @@ var (
 	mbdSessionRedirectURL = "https://mybrightday.brighthorizons.com/auth/jwt/redirect"
 )
 
-// ErrRefreshTokenRejected is returned when Auth0 refuses the refresh token
-// outright (expired, revoked, or already rotated past its reuse window), as
-// opposed to a transient failure. Callers should discard the token and ask the
-// user to log in again.
-var ErrRefreshTokenRejected = errors.New("refresh token rejected")
+// ErrSessionRejected is returned when the MyBrightDay API refuses the stored
+// session (expired, or revoked by a logout). Callers should discard the
+// session and ask the user to log in again.
+var ErrSessionRejected = errors.New("session rejected")
 
 // tokenResponse is the subset of Auth0's /oauth/token body that the flow uses.
 type tokenResponse struct {
-	AccessToken  string `json:"access_token"`
-	IDToken      string `json:"id_token"`
-	RefreshToken string `json:"refresh_token"`
-	Error        string `json:"error"`
-	ErrorDesc    string `json:"error_description"`
-}
-
-func generateRandomString(n int) string {
-	b := make([]byte, n)
-	rand.Read(b)
-	return base64.RawURLEncoding.EncodeToString(b)
+	AccessToken string `json:"access_token"`
+	IDToken     string `json:"id_token"`
+	Error       string `json:"error"`
+	ErrorDesc   string `json:"error_description"`
 }
 
 func newAuthClient() (*http.Client, *cookiejar.Jar) {
@@ -59,123 +51,39 @@ func newAuthClient() (*http.Client, *cookiejar.Jar) {
 	return &http.Client{Jar: jar, Timeout: 30 * time.Second}, jar
 }
 
-// Access is the result of a successful refresh grant.
-type Access struct {
-	// Token is the short-lived Family Info Center access token.
-	Token string
-	// IDToken is the OIDC ID token issued alongside it; the MyBrightDay
-	// gateway wants it when registering the login.
-	IDToken string
-	// RefreshToken is the rotated refresh token to persist. It equals the
-	// token that was presented only when Auth0 chose not to rotate.
-	RefreshToken string
-}
-
-// RefreshAccess presents a refresh token to Auth0 and returns a fresh access
-// token plus the rotated refresh token.
+// CompleteLogin turns an authorization code from the browser login into a
+// MyBrightDay session cookie: exchange the code at Auth0, register the login
+// with the MyBrightDay gateway (what the Family Info Center web app does
+// after every browser login; without it the gateway refuses to mint a
+// session), fetch an MBD token, and redeem it for the session.
 //
-// Auth0 rotates refresh tokens: every grant returns a new one and the old one
-// stops working shortly afterwards. Callers must persist Access.RefreshToken
-// before doing anything else that could fail, which is why this is a separate
-// step from SessionFromAccess.
-//
-// The HTTP client is intentionally not wrapped with httpx.RetryTransport: the
-// grant is single-use once it succeeds, and an automatic retry of a request
-// that actually went through would burn the freshly rotated token.
-func RefreshAccess(ctx context.Context, refreshToken string) (Access, error) {
-	client, _ := newAuthClient()
+// The refresh token Auth0 also issues is deliberately discarded: on this
+// tenant it dies after a few idle minutes, while the session cookie is valid
+// for about a year.
+func CompleteLogin(ctx context.Context, code, verifier string) (string, error) {
+	client, jar := newAuthClient()
 
 	tok, err := tokenGrant(ctx, client, url.Values{
-		"grant_type":    {"refresh_token"},
+		"grant_type":    {"authorization_code"},
 		"client_id":     {ficClientID},
-		"refresh_token": {refreshToken},
+		"code":          {code},
+		"code_verifier": {verifier},
+		"redirect_uri":  {loginRedirectURI},
 	})
 	if err != nil {
-		return Access{}, fmt.Errorf("refreshing MyBrightDay access: %w", err)
-	}
-
-	rotated := tok.RefreshToken
-	if rotated == "" {
-		rotated = refreshToken
-	}
-	return Access{Token: tok.AccessToken, IDToken: tok.IDToken, RefreshToken: rotated}, nil
-}
-
-// SessionFromAccess turns a Family Info Center login into a MyBrightDay
-// session cookie, the same way the Family Info Center web app does after a
-// browser login: register the login with the MyBrightDay gateway, fetch an
-// MBD token, redeem it for a session.
-func SessionFromAccess(ctx context.Context, access Access) (string, error) {
-	client, jar := newAuthClient()
-	if err := registerLogin(ctx, client, access); err != nil {
 		return "", err
 	}
-	return sessionFromFICJWT(ctx, client, jar, access.Token)
-}
-
-// registerLogin posts the ID token to the gateway's oktaservice endpoint.
-// The gateway refuses to mint an MBD token for a login it has not seen
-// through this call (observed as a bare 401 from mbdtoken), and the record
-// it keeps expires, so this runs on every authentication rather than only
-// once.
-func registerLogin(ctx context.Context, client *http.Client, access Access) error {
-	body, err := json.Marshal(map[string]string{"idToken": access.IDToken})
-	if err != nil {
-		return err
+	if err := registerLogin(ctx, client, tok.AccessToken, tok.IDToken); err != nil {
+		return "", err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, mbdGatewayBaseURL+"/api/account/oktaservice", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Authorization", "Bearer "+access.Token)
-	req.Header.Set("Content-Type", "application/json")
-	setGatewayHeaders(req)
-
-	resp, err := client.Do(req)
-	if err != nil {
-		return fmt.Errorf("registering login with MBD gateway: %w", withoutURL(err))
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("registering login with MBD gateway failed: status %d", resp.StatusCode)
-	}
-
-	var result struct {
-		IsAuthorized bool `json:"isAuthorized"`
-		ErrorCode    any  `json:"errorCode"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("decoding MBD gateway login response: %w", err)
-	}
-	if !result.IsAuthorized {
-		return fmt.Errorf("MBD gateway did not authorize the login (error code %v)", result.ErrorCode)
-	}
-	return nil
-}
-
-// withoutURL strips the request URL from a transport error. url.Error's
-// message embeds the full URL, and some of ours carry credentials in the
-// query string.
-func withoutURL(err error) error {
-	var ue *url.Error
-	if errors.As(err, &ue) && ue.Err != nil {
-		return ue.Err
-	}
-	return err
-}
-
-func setGatewayHeaders(req *http.Request) {
-	req.Header.Set("Accept", "application/json, text/plain, */*")
-	req.Header.Set("Origin", "https://familyinfocenter.brighthorizons.com")
-	req.Header.Set("Referer", "https://familyinfocenter.brighthorizons.com/")
-	req.Header.Set("User-Agent", userAgent)
+	return sessionFromFICJWT(ctx, client, jar, tok.AccessToken)
 }
 
 // tokenGrant posts form to Auth0's token endpoint and decodes the response.
-// A 4xx carrying Auth0's invalid_grant error maps to ErrRefreshTokenRejected;
-// anything else non-200 is reported as a plain error. Only Auth0's
-// error_description is included in error text, never the request or any token.
+// A 4xx carrying Auth0's invalid_grant error means the code is stale or was
+// already used and maps to oauthlogin.ErrLoginLinkExpired; anything else
+// non-200 is reported as a plain error. Only Auth0's error code is included
+// in error text, never the request or any token.
 func tokenGrant(ctx context.Context, client *http.Client, form url.Values) (*tokenResponse, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, ficAuth0BaseURL+"/oauth/token", strings.NewReader(form.Encode()))
 	if err != nil {
@@ -200,16 +108,8 @@ func tokenGrant(ctx context.Context, client *http.Client, form url.Values) (*tok
 	// check below, and a 200 with garbage is caught by the empty-token check.
 	_ = json.Unmarshal(body, &tok)
 
-	// Only invalid_grant means the token itself is dead. Other 4xx responses
-	// (429 rate limiting, 403 access_denied from tenant-level blocks, 400
-	// invalid_request) leave the token valid at Auth0, so they must not be
-	// classified as a rejection, or the caller would delete a good token.
 	if resp.StatusCode >= 400 && resp.StatusCode < 500 && tok.Error == "invalid_grant" {
-		desc := tok.ErrorDesc
-		if desc == "" {
-			desc = http.StatusText(resp.StatusCode)
-		}
-		return nil, fmt.Errorf("%w: %s", ErrRefreshTokenRejected, desc)
+		return nil, oauthlogin.ErrLoginLinkExpired
 	}
 	if resp.StatusCode != http.StatusOK {
 		if tok.Error != "" {
@@ -221,6 +121,45 @@ func tokenGrant(ctx context.Context, client *http.Client, form url.Values) (*tok
 		return nil, errors.New("token endpoint returned no access token")
 	}
 	return &tok, nil
+}
+
+// registerLogin posts the ID token to the gateway's oktaservice endpoint.
+// The gateway refuses to mint an MBD token for a login it has not seen
+// through this call (observed as a bare 401 from mbdtoken).
+func registerLogin(ctx context.Context, client *http.Client, accessToken, idToken string) error {
+	body, err := json.Marshal(map[string]string{"idToken": idToken})
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, mbdGatewayBaseURL+"/api/account/oktaservice", bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Authorization", "Bearer "+accessToken)
+	req.Header.Set("Content-Type", "application/json")
+	setGatewayHeaders(req)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("registering login with MBD gateway: %w", withoutURL(err))
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("registering login with MBD gateway failed: status %d", resp.StatusCode)
+	}
+
+	var result struct {
+		IsAuthorized bool `json:"isAuthorized"`
+		ErrorCode    any  `json:"errorCode"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return fmt.Errorf("decoding MBD gateway login response: %w", err)
+	}
+	if !result.IsAuthorized {
+		return fmt.Errorf("MBD gateway did not authorize the login (error code %v)", result.ErrorCode)
+	}
+	return nil
 }
 
 // sessionFromFICJWT runs the two MyBrightDay-side stages: exchange the Family
@@ -279,79 +218,63 @@ func sessionFromFICJWT(ctx context.Context, client *http.Client, jar *cookiejar.
 	return "", fmt.Errorf("session cookie not found after initialization (checked %s)", resp.Request.URL.Host)
 }
 
-// configDir returns the secrets directory used by the config resolution
-// system, so files written here are picked up on the next run without any
-// extra wiring.
-func configDir() string {
-	if dir := os.Getenv("CONFIG_FILES_DIR"); dir != "" {
-		return dir
+// withoutURL strips the request URL from a transport error. url.Error's
+// message embeds the full URL, and some of ours carry credentials in the
+// query string.
+func withoutURL(err error) error {
+	var ue *url.Error
+	if errors.As(err, &ue) && ue.Err != nil {
+		return ue.Err
 	}
-	return "config"
+	return err
 }
 
-func mybrightdayDir() string {
-	return filepath.Join(configDir(), "mybrightday")
+func setGatewayHeaders(req *http.Request) {
+	req.Header.Set("Accept", "application/json, text/plain, */*")
+	req.Header.Set("Origin", "https://familyinfocenter.brighthorizons.com")
+	req.Header.Set("Referer", "https://familyinfocenter.brighthorizons.com/")
+	req.Header.Set("User-Agent", userAgent)
 }
 
-// RefreshTokenPath is where SaveRefreshToken writes and where config
-// resolution reads `mybrightday.refresh_token` from.
-func RefreshTokenPath() string {
-	return filepath.Join(mybrightdayDir(), refreshTokenFile)
+// SessionPath is where SaveSession writes and where config resolution reads
+// `mybrightday.session` from.
+func SessionPath() string {
+	return oauthlogin.SectionPath(configSection, sessionFile)
 }
 
-// SaveRefreshToken writes token to RefreshTokenPath with owner-only
-// permissions. The write is atomic (temp file + rename) so a crash cannot
-// leave a truncated token behind.
-func SaveRefreshToken(token string) error {
-	return writeSecretFile(RefreshTokenPath(), []byte(token))
+// SaveSession writes the session cookie with owner-only permissions.
+func SaveSession(session string) error {
+	return oauthlogin.WriteSecretFile(SessionPath(), []byte(session))
 }
 
-// DeleteRefreshToken removes the stored token, including any temp copy left
-// by an interrupted write. A missing file is not an error.
-func DeleteRefreshToken() error {
-	removeStaleTempFiles(RefreshTokenPath())
-	if err := os.Remove(RefreshTokenPath()); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	return nil
+// LoadSession returns the stored session cookie, or "".
+func LoadSession() string {
+	return oauthlogin.ReadSecretFile(SessionPath())
 }
 
-// removeStaleTempFiles deletes leftovers of writeSecretFile for path: a crash
-// between CreateTemp and Rename leaves a 0600 copy of the secret behind.
-func removeStaleTempFiles(path string) {
-	matches, _ := filepath.Glob(filepath.Join(filepath.Dir(path), "."+filepath.Base(path)+".*"))
-	for _, m := range matches {
-		_ = os.Remove(m)
-	}
+// DeleteSession removes the stored session. A missing file is not an error.
+func DeleteSession() error {
+	return oauthlogin.RemoveSecretFile(SessionPath())
 }
 
-func writeSecretFile(path string, data []byte) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return fmt.Errorf("creating %s: %w", filepath.Dir(path), err)
-	}
-	removeStaleTempFiles(path)
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+// SessionExpiry reads the expiry embedded in the session cookie's payload.
+// The cookie is a signed, dot-separated token whose first part is base64
+// JSON with an "expires" Unix timestamp. The signature is not verified
+// (the server does that); this is only used to warn ahead of expiry.
+func SessionExpiry(session string) (time.Time, bool) {
+	first := strings.SplitN(session, ".", 2)[0]
+	data, err := base64.RawURLEncoding.DecodeString(first)
 	if err != nil {
-		return fmt.Errorf("creating temp file: %w", err)
+		data, err = base64.URLEncoding.DecodeString(first)
 	}
-	tmpName := tmp.Name()
-	cleanup := func() { tmp.Close(); os.Remove(tmpName) }
-
-	if err := tmp.Chmod(0o600); err != nil {
-		cleanup()
-		return fmt.Errorf("setting permissions: %w", err)
+	if err != nil {
+		return time.Time{}, false
 	}
-	if _, err := tmp.Write(data); err != nil {
-		cleanup()
-		return fmt.Errorf("writing %s: %w", path, err)
+	var payload struct {
+		Expires float64 `json:"expires"`
 	}
-	if err := tmp.Close(); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("closing %s: %w", path, err)
+	if json.Unmarshal(data, &payload) != nil || payload.Expires == 0 {
+		return time.Time{}, false
 	}
-	if err := os.Rename(tmpName, path); err != nil {
-		os.Remove(tmpName)
-		return fmt.Errorf("replacing %s: %w", path, err)
-	}
-	return nil
+	return time.Unix(int64(payload.Expires), 0), true
 }

@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -74,19 +76,29 @@ type storeStats struct {
 	Skipped int
 }
 
-// Seams so tests can stub the MyBrightDay auth flow and token persistence.
+// RunOptions carries per-invocation inputs that are not configuration.
+type RunOptions struct {
+	// CallbackURLs are addresses the browser landed on after logging in,
+	// completing logins started by an earlier run.
+	CallbackURLs []string
+	// Stdout receives login links and progress messages meant for a human
+	// or a wrapping script. Defaults to os.Stdout.
+	Stdout io.Writer
+}
+
+// Seams so tests can stub the session validation call and the Google
+// Photos backend constructor.
 var (
-	refreshAccess      = mybrightday.RefreshAccess
-	sessionFromAccess  = mybrightday.SessionFromAccess
-	saveRefreshToken   = mybrightday.SaveRefreshToken
-	deleteRefreshToken = mybrightday.DeleteRefreshToken
+	checkSession    = func(ctx context.Context, c *mybrightday.Client) error { return c.CheckSession(ctx) }
+	newGooglePhotos = googlephotos.New
 )
 
 // Download fetches photos from the MyBrightDay API for the configured date range,
 // processes them, and saves them to all enabled storage backends.
-func Download(ctx context.Context, cfg *Config) error {
-	if cfg.MyBrightDay.RefreshToken == "" {
-		return errors.New("not logged in to MyBrightDay — run 'mbdb login' first")
+func Download(ctx context.Context, cfg *Config, opts RunOptions) error {
+	stdout := opts.Stdout
+	if stdout == nil {
+		stdout = os.Stdout
 	}
 
 	startDate, endDate, startTime, endTime, err := parseDates(cfg.Date)
@@ -95,34 +107,20 @@ func Download(ctx context.Context, cfg *Config) error {
 	}
 	slog.Debug("Processing range", "start_date", startDate, "end_date", endDate)
 
-	slog.Info("Authenticating with MyBrightDay...")
-	access, err := refreshAccess(ctx, cfg.MyBrightDay.RefreshToken)
-	if errors.Is(err, mybrightday.ErrRefreshTokenRejected) {
-		// The token is dead; keeping it would only fail again tomorrow. Clear
-		// it so the next run goes straight to asking for a login.
-		if delErr := deleteRefreshToken(); delErr != nil {
-			slog.Warn("Could not remove rejected MyBrightDay token", "path", mybrightday.RefreshTokenPath(), "error", delErr)
-		}
-		return fmt.Errorf("MyBrightDay rejected the stored token (%v). This happens when it expires or was used elsewhere. It has been cleared; run 'mbdb login' to log in again", err)
-	}
-	if err != nil {
-		return fmt.Errorf("mybrightday authentication: %w", err)
+	if err := ensureCredentials(ctx, cfg, opts.CallbackURLs, stdout); err != nil {
+		return err
 	}
 
-	// Auth0 rotates the refresh token on every grant and the old one dies
-	// shortly after, so persist the new one before doing anything that could
-	// fail, including the rest of the login.
-	if access.RefreshToken != cfg.MyBrightDay.RefreshToken {
-		if err := saveRefreshToken(access.RefreshToken); err != nil {
-			return fmt.Errorf("saving rotated MyBrightDay token: %w", err)
-		}
-		slog.Debug("Stored rotated MyBrightDay token", "path", mybrightday.RefreshTokenPath())
+	slog.Info("Checking MyBrightDay session...")
+	mbd := mybrightday.NewClient(cfg.MyBrightDay.BaseURL, cfg.MyBrightDay.Session)
+	err = checkSession(ctx, mbd)
+	if errors.Is(err, mybrightday.ErrSessionRejected) {
+		return sessionRejected(cfg, stdout)
 	}
-
-	cookie, err := sessionFromAccess(ctx, access)
 	if err != nil {
-		return fmt.Errorf("mybrightday authentication: %w", err)
+		return fmt.Errorf("checking MyBrightDay session: %w", err)
 	}
+	warnIfSessionExpiringSoon(cfg.MyBrightDay.Session)
 
 	// Build storage backends. Each constructor performs its own one-time
 	// setup (directory creation, OAuth client, album lookup, dedup pre-fetch)
@@ -137,14 +135,15 @@ func Download(ctx context.Context, cfg *Config) error {
 		stores = append(stores, ls)
 	}
 	if cfg.GooglePhotos.Enabled {
-		gp, err := googlephotos.New(ctx, cfg.GooglePhotos, cfg.DryRun, startTime, endTime)
+		gp, err := newGooglePhotos(ctx, cfg.GooglePhotos, cfg.DryRun, startTime, endTime)
+		if googlephotos.IsTokenRejected(err) {
+			return googleTokenRejected(ctx, cfg, stdout)
+		}
 		if err != nil {
 			return fmt.Errorf("initialising google photos storage: %w", err)
 		}
 		stores = append(stores, gp)
 	}
-
-	mbd := mybrightday.NewClient(cfg.MyBrightDay.BaseURL, cookie)
 
 	dependentIDs, centerIDs, err := mbd.GetDependentIDs(ctx)
 	if err != nil {

@@ -11,19 +11,21 @@ import (
 	"github.com/dipeshc/mybrightday-backup/internal/app"
 	appconfig "github.com/dipeshc/mybrightday-backup/internal/config"
 	"github.com/dipeshc/mybrightday-backup/internal/logging"
-	"github.com/dipeshc/mybrightday-backup/internal/mybrightday"
 	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos"
 )
 
-const (
-	groupCore     = "core"
-	groupOptional = "optional"
-)
+var callbackURLs []string
 
 var RootCmd = &cobra.Command{
-	Use:           "mbdb",
-	Short:         "Back up photos from the MyBrightDay app",
-	Long:          "A tool to fetch photos from the MyBrightDay API, inject EXIF metadata, and optionally back them up to Google Photos.",
+	Use:   "mbdb",
+	Short: "Back up photos from the MyBrightDay app",
+	Long: `A tool to fetch photos from the MyBrightDay API, inject EXIF metadata, and optionally back them up to Google Photos.
+
+The first run logs you in: at a terminal it opens your browser and waits for
+you to sign in to MyBrightDay (and to Google, if Google Photos is enabled).
+Without a terminal it prints a login link for each and exits; log in, then run
+again passing the address you land on with --callback-url. Logins are kept
+under the config directory and last about a year.`,
 	Version:       app.Version,
 	SilenceUsage:  true,
 	SilenceErrors: true,
@@ -32,21 +34,9 @@ var RootCmd = &cobra.Command{
 
 func init() {
 	registerFlags(RootCmd, appconfig.Analyze(app.NewDefaultConfig(), ""))
-
-	// Help lists core commands before optional integrations, each group
-	// alphabetical.
-	RootCmd.AddGroup(
-		&cobra.Group{ID: groupCore, Title: "Core Commands:"},
-		&cobra.Group{ID: groupOptional, Title: "Optional Integrations:"},
-	)
-
-	login := mybrightday.LoginCommand()
-	login.GroupID = groupCore
-	RootCmd.AddCommand(login)
-
-	gp := googlephotos.Command()
-	gp.GroupID = groupOptional
-	RootCmd.AddCommand(gp)
+	RootCmd.Flags().StringArrayVar(&callbackURLs, "callback-url", nil,
+		"Complete a login started by an earlier run: the address the browser landed on after signing in (repeatable)")
+	RootCmd.AddCommand(googlephotos.Command())
 }
 
 func Execute() error {
@@ -72,7 +62,10 @@ func runDownload(cmd *cobra.Command, args []string) error {
 	cfg.Resolve(flagsMap)
 	logging.Setup(cfg.Logging)
 
-	return app.Download(context.Background(), cfg)
+	return app.Download(context.Background(), cfg, app.RunOptions{
+		CallbackURLs: callbackURLs,
+		Stdout:       cmd.OutOrStdout(),
+	})
 }
 
 // collectFlags extracts changed flag values from cmd into a map keyed by flag name.

@@ -50,14 +50,14 @@ func TestResolveKeepsPopulatedLocationOverride(t *testing.T) {
 
 func TestResolveAppliesEnvOverrides(t *testing.T) {
 	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
-	t.Setenv("MYBRIGHTDAY_REFRESH_TOKEN", "env-token")
+	t.Setenv("MYBRIGHTDAY_SESSION", "env-session")
 	t.Setenv("LOCATION_OVERRIDE_LATITUDE", "40.5")
 	t.Setenv("LOCATION_OVERRIDE_LONGITUDE", "-74.25")
 
 	cfg := NewDefaultConfig()
 	cfg.Resolve(nil)
-	if cfg.MyBrightDay.RefreshToken != "env-token" {
-		t.Errorf("RefreshToken = %q, want env value", cfg.MyBrightDay.RefreshToken)
+	if cfg.MyBrightDay.Session != "env-session" {
+		t.Errorf("Session = %q, want env value", cfg.MyBrightDay.Session)
 	}
 	if cfg.LocationOverride == nil || cfg.LocationOverride.Latitude != 40.5 || cfg.LocationOverride.Longitude != -74.25 {
 		t.Errorf("LocationOverride = %+v, want populated from env", cfg.LocationOverride)

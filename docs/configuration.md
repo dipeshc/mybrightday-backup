@@ -8,7 +8,7 @@ Configuration values are resolved in the following priority order:
 
 1.  **CLI Flags**: Highest priority. (e.g., `--googlephotos.albumname`)
 2.  **Environment Variables**: Upper-case version of the configuration key. (e.g., `GOOGLE_PHOTOS_ALBUM_NAME`)
-3.  **Config Files Directory**: The tool looks for files at `./config/<section>/<key>` by default. Override the base directory by setting `CONFIG_FILES_DIR`. (e.g., `mybrightday.refresh_token` -> `./config/mybrightday/refresh_token`)
+3.  **Config Files Directory**: The tool looks for files at `./config/<section>/<key>` by default. Override the base directory by setting `CONFIG_FILES_DIR`. (e.g., `mybrightday.session` -> `./config/mybrightday/session`)
 4.  **Configuration File**: YAML file (default: `config.yaml`).
 5.  **Defaults**: Hardcoded default values in the application.
 
@@ -20,7 +20,7 @@ Configuration keys are mapped to files by converting the nested YAML structure i
 
 | YAML key | Config file path |
 |---|---|
-| `mybrightday.refresh_token` | `./config/mybrightday/refresh_token` |
+| `mybrightday.session` | `./config/mybrightday/session` |
 | `google_photos.refresh_token` | `./config/google_photos/refresh_token` |
 
 The `./config/` directory is listed in `.gitignore` to prevent secrets from being accidentally committed.
@@ -41,6 +41,12 @@ The following tables detail the available configuration options.
 
 > **Flag name convention**: nested config keys use dot notation and underscores are removed.
 > For example, `google_photos.refresh_token` becomes `--googlephotos.refreshtoken`.
+
+### Login
+
+| Flag | Description |
+|------|-------------|
+| `--callback-url` | Completes a login started by an earlier run on a machine without a browser: the address the browser landed on after signing in. Repeatable, one per provider. See the README. |
 
 ### General
 
@@ -66,7 +72,7 @@ The following tables detail the available configuration options.
 
 | Flag | Env Var | YAML Key | Default | Description |
 |------|---------|----------|---------|-------------|
-| `--mybrightday.refreshtoken` | `MYBRIGHTDAY_REFRESH_TOKEN` | `mybrightday.refresh_token` | | Refresh token (set via `mbdb login`). Rotated on every run: the tool rewrites `./config/mybrightday/refresh_token` with the new token, so supply it via that file rather than a flag or env var if you want rotation to persist. |
+| `--mybrightday.session` | `MYBRIGHTDAY_SESSION` | `mybrightday.session` | | Session cookie saved by logging in through the browser (the first run does this). Valid for about a year. |
 | `--mybrightday.baseurl` | `MYBRIGHTDAY_BASE_URL` | `mybrightday.base_url` | `https://mybrightday.brighthorizons.com` | MyBrightDay API base URL |
 
 ### Local Storage
@@ -81,7 +87,7 @@ The following tables detail the available configuration options.
 | Flag | Env Var | YAML Key | Default | Description |
 |------|---------|----------|---------|-------------|
 | `--googlephotos.enabled` | `GOOGLE_PHOTOS_ENABLED` | `google_photos.enabled` | `false` | Enable uploading to Google Photos |
-| `--googlephotos.refreshtoken` | `GOOGLE_PHOTOS_REFRESH_TOKEN` | `google_photos.refresh_token` | | OAuth2 refresh token (set via `mbdb google-photos init`) |
+| `--googlephotos.refreshtoken` | `GOOGLE_PHOTOS_REFRESH_TOKEN` | `google_photos.refresh_token` | | OAuth2 refresh token, saved by signing in to Google the first time the destination is enabled (or via `mbdb google-photos init`) |
 | `--googlephotos.clientsecret` | `GOOGLE_PHOTOS_CLIENT_SECRET` | `google_photos.client_secret` | | Custom Google OAuth client secret JSON (overrides embedded credentials) |
 | `--googlephotos.albumname` | `GOOGLE_PHOTOS_ALBUM_NAME` | `google_photos.album_name` | `Daycare Photos` | Album to upload photos to |
 

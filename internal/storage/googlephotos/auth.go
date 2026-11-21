@@ -2,8 +2,6 @@ package googlephotos
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"net"
@@ -17,6 +15,7 @@ import (
 
 	"github.com/dipeshc/mybrightday-backup/internal/browser"
 	"github.com/dipeshc/mybrightday-backup/internal/httpx"
+	"github.com/dipeshc/mybrightday-backup/internal/oauthlogin"
 	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos/credential"
 )
 
@@ -26,6 +25,11 @@ var (
 	openBrowserFn     = browser.Open
 	performInitAuthFn = PerformInitAuth
 )
+
+const interactiveCallbackPath = "/google/callback"
+
+// interactiveWaitFor is how long the interactive flow waits for the browser.
+var interactiveWaitFor = 5 * time.Minute
 
 // oauthScopes defines the Google API scopes needed by this tool.
 var oauthScopes = []string{
@@ -111,25 +115,20 @@ func Init(ctx context.Context, cfg Config) error {
 		return fmt.Errorf("google photos authentication: %w", err)
 	}
 
-	configDir := os.Getenv("CONFIG_FILES_DIR")
-	if configDir == "" {
-		configDir = "config"
+	if err := SaveRefreshToken(tok.RefreshToken); err != nil {
+		return err
 	}
-	tokenPath := filepath.Join(configDir, "google_photos", "refresh_token")
-	if err := os.MkdirAll(filepath.Dir(tokenPath), 0700); err != nil {
-		return fmt.Errorf("creating config directory: %w", err)
-	}
-	if err := os.WriteFile(tokenPath, []byte(tok.RefreshToken), 0600); err != nil {
-		return fmt.Errorf("saving google refresh token: %w", err)
-	}
-	slog.Info("Google refresh token saved", "path", tokenPath)
+	slog.Info("Google refresh token saved", "path", RefreshTokenPath())
 	return nil
 }
 
-// getTokenFromWeb performs the OAuth2 authorization code flow by starting a temporary
-// local server and automatically opening the user's browser.
+// getTokenFromWeb performs the OAuth2 authorization code flow by starting a
+// temporary local server and opening the user's browser. The callback is
+// accepted only with the state this call issued, and the exchange is bound to
+// this call's PKCE verifier, so a forged request to the local port cannot
+// make the tool save someone else's token.
 func getTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token, error) {
-	// Find an available local port.
+	// Google's desktop clients accept any loopback port.
 	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
 		return nil, fmt.Errorf("starting local listener: %w", err)
@@ -137,59 +136,16 @@ func getTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token,
 	defer listener.Close()
 
 	port := listener.Addr().(*net.TCPAddr).Port
-	config.RedirectURL = fmt.Sprintf("http://localhost:%d", port)
+	config.RedirectURL = fmt.Sprintf("http://localhost:%d%s", port, interactiveCallbackPath)
 
-	codeChan := make(chan string, 1)
-	errChan := make(chan error, 1)
-
-	server := &http.Server{
-		Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.URL.Path != "/" {
-				w.WriteHeader(http.StatusNotFound)
-				return
-			}
-
-			code := r.URL.Query().Get("code")
-			if code == "" {
-				errStr := r.URL.Query().Get("error")
-				select {
-				case errChan <- fmt.Errorf("google returned error: %s", errStr):
-				default:
-				}
-				fmt.Fprint(w, "Authentication failed. You can close this window.")
-				return
-			}
-
-			select {
-			case codeChan <- code:
-			default:
-			}
-			w.Header().Set("Content-Type", "text/html")
-			fmt.Fprint(w, "Authentication successful! You can close this window now.")
-		}),
-	}
-
-	go func() {
-		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			select {
-			case errChan <- fmt.Errorf("http server error: %w", err):
-			default:
-			}
-		}
-	}()
-	defer func() {
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
-		defer cancel()
-		server.Shutdown(shutdownCtx)
-	}()
-
-	state := generateRandomState()
+	p := oauthlogin.NewPending(configSection)
 	// AccessTypeOffline asks Google to issue a refresh token; prompt=consent
 	// forces the consent screen on every run so a refresh token is always
 	// returned (Google omits it on silent re-authorisations).
-	authURL := config.AuthCodeURL(state,
+	authURL := config.AuthCodeURL(p.State,
 		oauth2.AccessTypeOffline,
 		oauth2.SetAuthURLParam("prompt", "consent"),
+		oauth2.S256ChallengeOption(p.Verifier),
 	)
 	slog.Info("Opening browser for authorization...")
 	if err := openBrowserFn(authURL); err != nil {
@@ -197,26 +153,14 @@ func getTokenFromWeb(ctx context.Context, config *oauth2.Config) (*oauth2.Token,
 		fmt.Printf("Please open this URL manually:\n\n%s\n\n", authURL)
 	}
 
-	select {
-	case code := <-codeChan:
-		tok, err := config.Exchange(ctx, code)
-		if err == nil {
-			slog.Info("Successfully authenticated and retrieved token!")
-		}
-		return tok, err
-	case err := <-errChan:
+	code, err := oauthlogin.WaitForCallback(ctx, listener, interactiveCallbackPath, p.State, interactiveWaitFor)
+	if err != nil {
 		return nil, err
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case <-time.After(5 * time.Minute):
-		return nil, fmt.Errorf("timeout waiting for authorization")
 	}
-}
-
-func generateRandomState() string {
-	b := make([]byte, 16)
-	if _, err := rand.Read(b); err != nil {
-		return "state-fallback"
+	tok, err := config.Exchange(ctx, code, oauth2.VerifierOption(p.Verifier))
+	if err != nil {
+		return nil, withoutURL(err)
 	}
-	return hex.EncodeToString(b)
+	slog.Info("Successfully authenticated and retrieved token!")
+	return tok, nil
 }

@@ -14,7 +14,8 @@ mybrightday-backup/
 │   ├── config/         # Reflection-based config analysis, resolution, and YAML loading
 │   ├── logging/        # Logging config and slog setup
 │   ├── browser/        # Opens URLs in the user's default browser
-│   ├── mybrightday/    # MyBrightDay login + auth, API client, domain config, "login" command
+│   ├── oauthlogin/     # Shared browser-login plumbing (pending state, callback listener, secret files)
+│   ├── mybrightday/    # MyBrightDay login flow, session handling, API client, domain config
 │   ├── processor/      # Image conversion (PNG→JPEG) and EXIF metadata injection
 │   └── storage/
 │       ├── storage.go          # Storage interface, Photo type, BaseConfig

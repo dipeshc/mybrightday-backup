@@ -16,7 +16,8 @@ mybrightday-backup/
 │   ├── config/                  # Config analysis, resolution, and YAML loading
 │   ├── logging/                 # Logging config and slog initialisation
 │   ├── browser/                 # Opens URLs in the user's default browser
-│   ├── mybrightday/             # MyBrightDay login, auth, API client, domain config, `login` command
+│   ├── oauthlogin/              # Shared browser-login plumbing: pending state, callback listener, secret files
+│   ├── mybrightday/             # MyBrightDay login flow, session handling, API client, domain config
 │   ├── processor/               # Image conversion (PNG→JPEG) and EXIF injection
 │   └── storage/
 │       ├── storage.go           # Storage interface, Photo type, BaseConfig
@@ -37,7 +38,7 @@ The code is organised by **domain** rather than by operation type. Each package 
 Single `main.go` that calls `cmd.Execute()`. No logic lives here.
 
 ### `internal/cmd`
-A single `root.go` file. The root Cobra command **is** the download action — running `mbdb` downloads photos. It attaches the core `login` command and the optional `google-photos` subcommand tree, in two help groups so core commands are listed before optional integrations. The `--version` flag is provided by Cobra's built-in `RootCmd.Version` field.
+A single `root.go` file. The root Cobra command **is** the download action — running `mbdb` downloads photos, logging in first if needed. Its only non-config flag is `--callback-url`, which completes a login started by an earlier run. It also attaches the `google-photos` subcommand tree. The `--version` flag is provided by Cobra's built-in `RootCmd.Version` field.
 
 ### `internal/app`
 The application entry-points and their aggregated configuration:
@@ -59,11 +60,13 @@ Owns the `Config` struct (format and level) and the `Setup(cfg Config)` function
 ### `internal/mybrightday`
 Everything specific to the MyBrightDay service:
 
-- **`config.go`**: `Config` struct with refresh token and base URL.
-- **`auth.go`**: Exchanges the refresh token for a session cookie (Auth0 refresh grant → FIC JWT → MBD token → session) and returns the rotated refresh token; also the helpers that read and atomically write the token file.
-- **`login.go`**: The one-time browser login (Auth0 authorization code flow with PKCE). Runs either with a local listener on port 4200 or split into two steps (`--print-url` / `--callback-url`) for machines without a browser; the pending PKCE state lives in `config/mybrightday/pkce_state` between the steps.
-- **`cmd.go`**: The top-level `login` cobra command.
+- **`config.go`**: `Config` struct with the session cookie and base URL.
+- **`auth.go`**: Turns a browser login's authorization code into a session cookie (Auth0 code exchange → register the login with the MBD gateway → MBD token → session), plus the session file helpers and expiry parsing.
+- **`login.go`**: The browser login (Auth0 authorization code flow with PKCE): a local listener on port 4200 when a human is present, or the two-step link/callback form for machines without a browser, with the pending PKCE state in `config/mybrightday/pending_login` between the steps.
 - **`client.go`**: The `Client` struct and its methods for fetching dependents, center info, geocoding, media lists, and downloading individual photos. Also `FormatOffset()` for timezone formatting.
+
+### `internal/oauthlogin`
+The provider-independent half of a browser login, shared by MyBrightDay and Google Photos: pending-login state (PKCE verifier, state, issue time) under the config directory, the local callback listener, callback parsing and routing, the terminal check that decides between opening a browser and printing a link, and atomic owner-only secret files.
 
 ### `internal/processor`
 Stateless image processing functions, independent of all other application packages:
@@ -201,9 +204,8 @@ Flag names are derived from YAML tag names with underscores removed and dots as 
 ## CLI Structure
 
 ```
-mbdb                     # Downloads photos (the root command IS the action)
+mbdb                     # Downloads photos, logging in first if needed (the root command IS the action)
 mbdb --version           # Prints the version (Cobra built-in)
-mbdb login               # Logs in to MyBrightDay once and saves the refresh token
 mbdb google-photos       # Parent command for Google Photos management
 mbdb google-photos init  # Runs the interactive OAuth2 flow and saves the token
 ```
@@ -217,7 +219,6 @@ The `google-photos` command tree is defined and exported entirely within the `in
 ```
 cmd/mbdb
   └── internal/cmd          (cobra root)
-        ├── internal/mybrightday          (for LoginCommand())
         ├── internal/app    (orchestration + config)
         │     ├── internal/mybrightday
         │     │     └── internal/browser

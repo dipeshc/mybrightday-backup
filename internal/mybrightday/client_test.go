@@ -3,6 +3,7 @@ package mybrightday
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -367,6 +368,35 @@ func TestFormatOffset(t *testing.T) {
 	for _, tt := range tests {
 		if got := FormatOffset(tt.seconds); got != tt.want {
 			t.Errorf("FormatOffset(%d) = %q, want %q", tt.seconds, got, tt.want)
+		}
+	}
+}
+
+func TestCheckSessionStatusMapping(t *testing.T) {
+	for _, tt := range []struct {
+		status       int
+		wantRejected bool
+		wantErr      bool
+	}{
+		{http.StatusOK, false, false},
+		{http.StatusUnauthorized, true, true},
+		{http.StatusForbidden, false, true},
+		{http.StatusBadGateway, false, true},
+	} {
+		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Cookie") != "session=abc" {
+				t.Errorf("cookie = %q", r.Header.Get("Cookie"))
+			}
+			w.WriteHeader(tt.status)
+		}))
+		c := NewClient(ts.URL, "abc")
+		err := c.CheckSession(context.Background())
+		ts.Close()
+		if (err != nil) != tt.wantErr {
+			t.Errorf("status %d: err = %v, wantErr %v", tt.status, err, tt.wantErr)
+		}
+		if errors.Is(err, ErrSessionRejected) != tt.wantRejected {
+			t.Errorf("status %d: rejected = %v, want %v (403 must not delete a session)", tt.status, !tt.wantRejected, tt.wantRejected)
 		}
 	}
 }

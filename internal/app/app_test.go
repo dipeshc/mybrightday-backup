@@ -3,10 +3,14 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,6 +22,7 @@ import (
 	mp4 "github.com/abema/go-mp4"
 
 	"github.com/dipeshc/mybrightday-backup/internal/mybrightday"
+	"github.com/dipeshc/mybrightday-backup/internal/storage/googlephotos"
 )
 
 func TestParseDateString(t *testing.T) {
@@ -90,50 +95,90 @@ func TestParseDates(t *testing.T) {
 	})
 }
 
-// stubAuth replaces the MyBrightDay authentication hook. Tests using it must
+// stubSession replaces the session validation seam. Tests using it must
 // not run in parallel.
+func stubSession(t *testing.T, err error) {
+	t.Helper()
+	original := checkSession
+	checkSession = func(ctx context.Context, c *mybrightday.Client) error { return err }
+	t.Cleanup(func() { checkSession = original })
+}
+
+// stubTerminal controls whether the run believes a human is at the keyboard.
+func stubTerminal(t *testing.T, interactive bool) {
+	t.Helper()
+	original := isTerminal
+	isTerminal = func() bool { return interactive }
+	t.Cleanup(func() { isTerminal = original })
+}
+
+// loginCalls records what the login seams were asked to do.
+type loginCalls struct {
+	mbdBegins, googleBegins           int
+	mbdFinished, googleFinished       []string
+	mbdInteractive, googleInteractive int
+	sessionDeleted                    int
+	googleDeleted                     int
+}
+
+// stubLogins replaces every login seam with recorders that behave like a
+// successful login (writing the credential files the real ones would).
+func stubLogins(t *testing.T) *loginCalls {
+	t.Helper()
+	calls := &loginCalls{}
+	origs := []any{mbdBeginLogin, mbdFinishLogin, mbdInteractiveLogin, googleBeginLogin, googleFinishLogin, googleInteractiveLogin, deleteSession}
+	mbdBeginLogin = func() (string, error) {
+		calls.mbdBegins++
+		return "https://auth0.example/authorize?state=mbd", nil
+	}
+	mbdFinishLogin = func(ctx context.Context, raw string) error {
+		calls.mbdFinished = append(calls.mbdFinished, raw)
+		return mybrightday.SaveSession("session-from-callback")
+	}
+	mbdInteractiveLogin = func(ctx context.Context, stdin io.Reader, stdout io.Writer) error {
+		calls.mbdInteractive++
+		return mybrightday.SaveSession("session-from-browser")
+	}
+	googleBeginLogin = func(cfg googlephotos.Config) (string, error) {
+		calls.googleBegins++
+		return "https://google.example/auth?state=g", nil
+	}
+	googleFinishLogin = func(ctx context.Context, cfg googlephotos.Config, raw string) error {
+		calls.googleFinished = append(calls.googleFinished, raw)
+		return googlephotos.SaveRefreshToken("google-from-callback")
+	}
+	googleInteractiveLogin = func(ctx context.Context, cfg googlephotos.Config) error {
+		calls.googleInteractive++
+		return googlephotos.SaveRefreshToken("google-from-browser")
+	}
+	deleteSession = func() error {
+		calls.sessionDeleted++
+		return mybrightday.DeleteSession()
+	}
+	origDeleteGoogle := deleteGoogleToken
+	deleteGoogleToken = func() error {
+		calls.googleDeleted++
+		return googlephotos.DeleteRefreshToken()
+	}
+	t.Cleanup(func() { deleteGoogleToken = origDeleteGoogle })
+	t.Cleanup(func() {
+		mbdBeginLogin = origs[0].(func() (string, error))
+		mbdFinishLogin = origs[1].(func(context.Context, string) error)
+		mbdInteractiveLogin = origs[2].(func(context.Context, io.Reader, io.Writer) error)
+		googleBeginLogin = origs[3].(func(googlephotos.Config) (string, error))
+		googleFinishLogin = origs[4].(func(context.Context, googlephotos.Config, string) error)
+		googleInteractiveLogin = origs[5].(func(context.Context, googlephotos.Config) error)
+		deleteSession = origs[6].(func() error)
+	})
+	return calls
+}
+
+// stubAuth is the common happy-path setup: a valid stored session.
 func stubAuth(t *testing.T, cookie string, err error) {
 	t.Helper()
-	stubRefresh(t, func(refreshToken string) (mybrightday.Access, error) {
-		return mybrightday.Access{Token: "fic-jwt", RefreshToken: refreshToken}, err
-	})
-	origSession := sessionFromAccess
-	sessionFromAccess = func(ctx context.Context, access mybrightday.Access) (string, error) {
-		return cookie, err
-	}
-	t.Cleanup(func() { sessionFromAccess = origSession })
-}
-
-func stubRefresh(t *testing.T, fn func(refreshToken string) (mybrightday.Access, error)) {
-	t.Helper()
-	original := refreshAccess
-	refreshAccess = func(ctx context.Context, refreshToken string) (mybrightday.Access, error) {
-		return fn(refreshToken)
-	}
-	t.Cleanup(func() { refreshAccess = original })
-}
-
-// stubTokenStore replaces the token persistence seams and records what the
-// orchestration asked them to do.
-type tokenStoreCalls struct {
-	saved   []string
-	deleted int
-}
-
-func stubTokenStore(t *testing.T) *tokenStoreCalls {
-	t.Helper()
-	calls := &tokenStoreCalls{}
-	origSave, origDelete := saveRefreshToken, deleteRefreshToken
-	saveRefreshToken = func(token string) error {
-		calls.saved = append(calls.saved, token)
-		return nil
-	}
-	deleteRefreshToken = func() error {
-		calls.deleted++
-		return nil
-	}
-	t.Cleanup(func() { saveRefreshToken, deleteRefreshToken = origSave, origDelete })
-	return calls
+	stubSession(t, err)
+	stubTerminal(t, false)
+	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
 }
 
 func tinyJPEG(t *testing.T) []byte {
@@ -279,7 +324,7 @@ func startMBDServer(t *testing.T, opts mbdServerOptions) *httptest.Server {
 func testDownloadConfig(t *testing.T, baseURL string) *Config {
 	t.Helper()
 	cfg := NewDefaultConfig()
-	cfg.MyBrightDay.RefreshToken = "stored-token"
+	cfg.MyBrightDay.Session = "stored-session"
 	cfg.MyBrightDay.BaseURL = baseURL
 	cfg.Date = "2024-01-15:2024-01-17"
 	cfg.Local.Directory = t.TempDir()
@@ -303,7 +348,7 @@ func TestDownloadHappyPath(t *testing.T) {
 	})
 
 	cfg := testDownloadConfig(t, ts.URL)
-	if err := Download(context.Background(), cfg); err != nil {
+	if err := Download(context.Background(), cfg, RunOptions{}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 
@@ -341,7 +386,7 @@ func TestDownloadDryRun(t *testing.T) {
 
 	cfg := testDownloadConfig(t, ts.URL)
 	cfg.DryRun = true
-	if err := Download(context.Background(), cfg); err != nil {
+	if err := Download(context.Background(), cfg, RunOptions{}); err != nil {
 		t.Fatalf("Download: %v", err)
 	}
 
@@ -365,7 +410,7 @@ func TestDownloadPerItemErrors(t *testing.T) {
 			},
 		})
 
-		err := Download(context.Background(), testDownloadConfig(t, ts.URL))
+		err := Download(context.Background(), testDownloadConfig(t, ts.URL), RunOptions{})
 		if err == nil || !strings.Contains(err.Error(), "per-item error") {
 			t.Errorf("err = %v, want per-item error summary", err)
 		}
@@ -379,7 +424,7 @@ func TestDownloadPerItemErrors(t *testing.T) {
 			},
 		})
 
-		err := Download(context.Background(), testDownloadConfig(t, ts.URL))
+		err := Download(context.Background(), testDownloadConfig(t, ts.URL), RunOptions{})
 		if err == nil || !strings.Contains(err.Error(), "per-item error") {
 			t.Errorf("err = %v, want per-item error summary", err)
 		}
@@ -393,12 +438,16 @@ func TestDownloadErrors(t *testing.T) {
 		errContains string
 	}{
 		{
-			name: "not logged in",
+			name: "not logged in and no terminal",
 			setup: func(t *testing.T) *Config {
+				stubTerminal(t, false)
+				stubLogins(t)
+				t.Setenv("CONFIG_FILES_DIR", t.TempDir())
 				cfg := NewDefaultConfig()
+				cfg.Date = "2024-01-15"
 				return cfg
 			},
-			errContains: "mbdb login",
+			errContains: "login required",
 		},
 		{
 			name: "invalid date",
@@ -413,10 +462,10 @@ func TestDownloadErrors(t *testing.T) {
 		{
 			name: "authentication failure",
 			setup: func(t *testing.T) *Config {
-				stubAuth(t, "", fmt.Errorf("token endpoint returned status 502"))
+				stubAuth(t, "", fmt.Errorf("session check returned status 502"))
 				return testDownloadConfig(t, "http://unused.test")
 			},
-			errContains: "mybrightday authentication",
+			errContains: "checking MyBrightDay session",
 		},
 		{
 			name: "local storage init failure",
@@ -433,15 +482,17 @@ func TestDownloadErrors(t *testing.T) {
 			errContains: "initialising local storage",
 		},
 		{
-			name: "google photos init failure",
+			name: "google photos enabled without a token and no terminal",
 			setup: func(t *testing.T) *Config {
 				stubAuth(t, "session-cookie", nil)
+				stubLogins(t)
 				cfg := testDownloadConfig(t, "http://unused.test")
 				cfg.GooglePhotos.Enabled = true
-				// No refresh token: fails before any network call.
+				// No refresh token: a Google login link is issued instead of
+				// attempting the backend.
 				return cfg
 			},
-			errContains: "initialising google photos storage",
+			errContains: "login required",
 		},
 		{
 			name: "no dependents",
@@ -492,7 +543,7 @@ func TestDownloadErrors(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := tt.setup(t)
-			err := Download(context.Background(), cfg)
+			err := Download(context.Background(), cfg, RunOptions{})
 			if err == nil || !strings.Contains(err.Error(), tt.errContains) {
 				t.Errorf("err = %v, want containing %q", err, tt.errContains)
 			}
@@ -500,89 +551,238 @@ func TestDownloadErrors(t *testing.T) {
 	}
 }
 
-func TestDownloadPersistsRotatedTokenBeforeStorageInit(t *testing.T) {
-	calls := stubTokenStore(t)
-	stubAuth(t, "session-cookie", nil)
-	stubRefresh(t, func(string) (mybrightday.Access, error) {
-		return mybrightday.Access{Token: "fic-jwt", RefreshToken: "rotated-token"}, nil
-	})
+func TestNoTerminalPrintsLoginLinksAndStops(t *testing.T) {
+	stubTerminal(t, false)
+	calls := stubLogins(t)
+	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
+	cfg := NewDefaultConfig()
+	cfg.Date = "2024-01-15"
+	cfg.GooglePhotos.Enabled = true
 
-	// Make storage initialisation fail so the run dies right after auth: the
-	// rotated token must already be on disk by then, or it is lost forever.
-	cfg := testDownloadConfig(t, "http://unused.test")
-	blocker := filepath.Join(t.TempDir(), "blocker")
-	if err := os.WriteFile(blocker, []byte("x"), 0o644); err != nil {
-		t.Fatal(err)
+	var out bytes.Buffer
+	err := Download(context.Background(), cfg, RunOptions{Stdout: &out})
+	if !errors.Is(err, ErrLoginRequired) {
+		t.Fatalf("err = %v, want ErrLoginRequired", err)
 	}
-	cfg.Local.Directory = filepath.Join(blocker, "photos")
-
-	err := Download(context.Background(), cfg)
-	if err == nil || !strings.Contains(err.Error(), "initialising local storage") {
-		t.Fatalf("err = %v, want storage init failure", err)
+	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
+	if len(lines) != 2 || !strings.HasPrefix(lines[0], "login-url mybrightday https://") || !strings.HasPrefix(lines[1], "login-url google_photos https://") {
+		t.Errorf("stdout = %q, want one login-url line per missing credential", out.String())
 	}
-	if len(calls.saved) != 1 || calls.saved[0] != "rotated-token" {
-		t.Errorf("saved tokens = %v, want [rotated-token] persisted before storage init", calls.saved)
+	if calls.mbdBegins != 1 || calls.googleBegins != 1 || calls.mbdInteractive != 0 || calls.googleInteractive != 0 {
+		t.Errorf("calls = %+v, want one begin per provider and no interactive login", *calls)
 	}
 }
 
-func TestDownloadSkipsSaveWhenTokenUnchanged(t *testing.T) {
-	calls := stubTokenStore(t)
-	stubAuth(t, "session-cookie", nil) // echoes the input token as "rotated"
-	ts := startMBDServer(t, mbdServerOptions{})
+func TestNoTerminalSkipsGoogleWhenDisabled(t *testing.T) {
+	stubTerminal(t, false)
+	calls := stubLogins(t)
+	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
+	cfg := NewDefaultConfig()
+	cfg.Date = "2024-01-15"
 
-	if err := Download(context.Background(), testDownloadConfig(t, ts.URL)); err != nil {
+	var out bytes.Buffer
+	_ = Download(context.Background(), cfg, RunOptions{Stdout: &out})
+	if calls.googleBegins != 0 || strings.Contains(out.String(), "google") {
+		t.Errorf("Google login offered although Google Photos is disabled: %q", out.String())
+	}
+}
+
+func TestCallbackURLsCompleteLoginsThenRun(t *testing.T) {
+	stubTerminal(t, false)
+	stubSession(t, nil)
+	calls := stubLogins(t)
+	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
+	ts := startMBDServer(t, mbdServerOptions{})
+	cfg := NewDefaultConfig()
+	cfg.MyBrightDay.BaseURL = ts.URL
+	cfg.Date = "2024-01-15:2024-01-17"
+	cfg.Local.Directory = t.TempDir()
+	cfg.LocationOverride = &LocationOverrideConfig{Latitude: 37.42, Longitude: -122.08}
+
+	err := Download(context.Background(), cfg, RunOptions{
+		CallbackURLs: []string{"http://localhost:4200/okta/callback?code=a&state=b"},
+		Stdout:       &bytes.Buffer{},
+	})
+	if err != nil {
 		t.Fatalf("Download: %v", err)
 	}
-	if len(calls.saved) != 0 {
-		t.Errorf("saved tokens = %v, want none when Auth0 did not rotate", calls.saved)
+	if len(calls.mbdFinished) != 1 || calls.mbdBegins != 0 {
+		t.Errorf("calls = %+v, want the callback consumed and no new login issued", *calls)
+	}
+	if cfg.MyBrightDay.Session != "session-from-callback" {
+		t.Errorf("session after callback = %q", cfg.MyBrightDay.Session)
 	}
 }
 
-func TestDownloadRejectedTokenIsClearedWithGuidance(t *testing.T) {
-	calls := stubTokenStore(t)
-	stubRefresh(t, func(string) (mybrightday.Access, error) {
-		return mybrightday.Access{}, fmt.Errorf("%w: Unknown or invalid refresh token.", mybrightday.ErrRefreshTokenRejected)
-	})
-
-	err := Download(context.Background(), testDownloadConfig(t, "http://unused.test"))
-	if err == nil {
-		t.Fatal("Download succeeded with a rejected token")
-	}
-	for _, want := range []string{"rejected the stored token", "mbdb login", "Unknown or invalid refresh token"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Errorf("err = %v, want containing %q", err, want)
-		}
-	}
-	if strings.Contains(err.Error(), "stored-token") {
-		t.Errorf("err = %v, must not include the token", err)
-	}
-	if calls.deleted != 1 {
-		t.Errorf("deleted = %d, want the dead token removed exactly once", calls.deleted)
-	}
-	if len(calls.saved) != 0 {
-		t.Errorf("saved tokens = %v, want none after rejection", calls.saved)
+func TestUnknownCallbackURLIsRejected(t *testing.T) {
+	stubTerminal(t, false)
+	stubLogins(t)
+	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
+	cfg := testDownloadConfig(t, "http://unused.test")
+	err := Download(context.Background(), cfg, RunOptions{CallbackURLs: []string{"https://example.com/?code=x"}, Stdout: &bytes.Buffer{}})
+	if err == nil || !strings.Contains(err.Error(), "isn't one this tool issued") {
+		t.Errorf("err = %v, want unknown-callback message", err)
 	}
 }
 
-func TestDownloadPersistsRotatedTokenEvenIfSessionFails(t *testing.T) {
-	calls := stubTokenStore(t)
-	stubRefresh(t, func(string) (mybrightday.Access, error) {
-		return mybrightday.Access{Token: "fic-jwt", RefreshToken: "rotated-token"}, nil
-	})
-	origSession := sessionFromAccess
-	sessionFromAccess = func(ctx context.Context, access mybrightday.Access) (string, error) {
-		return "", fmt.Errorf("MBD token exchange failed: status 401")
-	}
-	t.Cleanup(func() { sessionFromAccess = origSession })
+func TestTerminalRunsInteractiveLogins(t *testing.T) {
+	stubTerminal(t, true)
+	stubSession(t, nil)
+	calls := stubLogins(t)
+	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
+	ts := startMBDServer(t, mbdServerOptions{})
+	cfg := NewDefaultConfig()
+	cfg.MyBrightDay.BaseURL = ts.URL
+	cfg.Date = "2024-01-15:2024-01-17"
+	cfg.Local.Directory = t.TempDir()
+	cfg.GooglePhotos.Enabled = false
+	cfg.LocationOverride = &LocationOverrideConfig{Latitude: 37.42, Longitude: -122.08}
 
-	err := Download(context.Background(), testDownloadConfig(t, "http://unused.test"))
-	if err == nil || !strings.Contains(err.Error(), "status 401") {
-		t.Fatalf("err = %v, want the session failure", err)
+	if err := Download(context.Background(), cfg, RunOptions{Stdout: &bytes.Buffer{}}); err != nil {
+		t.Fatalf("Download: %v", err)
 	}
-	if len(calls.saved) != 1 || calls.saved[0] != "rotated-token" {
-		t.Errorf("saved tokens = %v, want [rotated-token]: the grant succeeded, so its rotation must not be lost", calls.saved)
+	if calls.mbdInteractive != 1 || calls.mbdBegins != 0 {
+		t.Errorf("calls = %+v, want one interactive login and no link issued", *calls)
 	}
-	if calls.deleted != 0 {
-		t.Errorf("deleted = %d, want 0: a gateway failure is not a rejected token", calls.deleted)
+	if cfg.MyBrightDay.Session != "session-from-browser" {
+		t.Errorf("session after login = %q", cfg.MyBrightDay.Session)
+	}
+}
+
+func TestRejectedSessionIsClearedAndLinkIssued(t *testing.T) {
+	stubTerminal(t, false)
+	stubSession(t, mybrightday.ErrSessionRejected)
+	calls := stubLogins(t)
+	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
+	if err := mybrightday.SaveSession("stale"); err != nil {
+		t.Fatal(err)
+	}
+	cfg := testDownloadConfig(t, "http://unused.test")
+	cfg.MyBrightDay.Session = "stale"
+
+	var out bytes.Buffer
+	err := Download(context.Background(), cfg, RunOptions{Stdout: &out})
+	if !errors.Is(err, ErrLoginRequired) {
+		t.Fatalf("err = %v, want ErrLoginRequired", err)
+	}
+	if !strings.Contains(err.Error(), "rejected the stored session") {
+		t.Errorf("err = %v, want rejection explained", err)
+	}
+	if strings.Contains(err.Error(), "stale") || strings.Contains(out.String(), "stale") {
+		t.Error("output leaks the session value")
+	}
+	if calls.sessionDeleted != 1 || mybrightday.LoadSession() != "" {
+		t.Errorf("deleted = %d, stored = %q; want the dead session removed", calls.sessionDeleted, mybrightday.LoadSession())
+	}
+	if !strings.HasPrefix(out.String(), "login-url mybrightday ") {
+		t.Errorf("stdout = %q, want a fresh login link in the same run", out.String())
+	}
+}
+
+func TestRejectedSessionInteractiveExplains(t *testing.T) {
+	stubTerminal(t, true)
+	stubSession(t, mybrightday.ErrSessionRejected)
+	calls := stubLogins(t)
+	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
+	cfg := testDownloadConfig(t, "http://unused.test")
+
+	err := Download(context.Background(), cfg, RunOptions{Stdout: &bytes.Buffer{}})
+	if err == nil || !strings.Contains(err.Error(), "run mbdb again to log in") {
+		t.Errorf("err = %v, want guidance to run again", err)
+	}
+	if errors.Is(err, ErrLoginRequired) {
+		t.Error("interactive rejection must not use the login-required exit path")
+	}
+	if calls.sessionDeleted != 1 {
+		t.Errorf("deleted = %d, want 1", calls.sessionDeleted)
+	}
+}
+
+func TestSessionExpiryWarning(t *testing.T) {
+	var buf bytes.Buffer
+	orig := slog.Default()
+	slog.SetDefault(slog.New(slog.NewTextHandler(&buf, nil)))
+	t.Cleanup(func() { slog.SetDefault(orig) })
+
+	soon := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"expires":%d}`, time.Now().Add(10*24*time.Hour).Unix()))) + ".x.y"
+	warnIfSessionExpiringSoon(soon)
+	if !strings.Contains(buf.String(), "expires soon") {
+		t.Errorf("no warning for a session expiring in 10 days: %q", buf.String())
+	}
+	buf.Reset()
+	far := base64.RawURLEncoding.EncodeToString([]byte(fmt.Sprintf(`{"expires":%d}`, time.Now().Add(300*24*time.Hour).Unix()))) + ".x.y"
+	warnIfSessionExpiringSoon(far)
+	if strings.Contains(buf.String(), "expires soon") {
+		t.Errorf("unexpected warning for a session expiring in 300 days: %q", buf.String())
+	}
+}
+
+func TestRejectedGoogleTokenIsClearedAndLinkIssued(t *testing.T) {
+	stubTerminal(t, false)
+	stubSession(t, nil)
+	calls := stubLogins(t)
+	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
+	if err := googlephotos.SaveRefreshToken("g0tok-stored-secret"); err != nil {
+		t.Fatal(err)
+	}
+	orig := newGooglePhotos
+	newGooglePhotos = func(ctx context.Context, cfg googlephotos.Config, dryRun bool, start, end time.Time) (*googlephotos.GooglePhotosStorage, error) {
+		return nil, fmt.Errorf("initialising: %w", googlephotos.ErrTokenRejected)
+	}
+	t.Cleanup(func() { newGooglePhotos = orig })
+
+	cfg := testDownloadConfig(t, "http://unused.test")
+	cfg.GooglePhotos.Enabled = true
+	cfg.GooglePhotos.RefreshToken = "g0tok-stored-secret"
+
+	var out bytes.Buffer
+	err := Download(context.Background(), cfg, RunOptions{Stdout: &out})
+	if !errors.Is(err, ErrLoginRequired) {
+		t.Fatalf("err = %v, want ErrLoginRequired", err)
+	}
+	if calls.googleDeleted != 1 || googlephotos.LoadRefreshToken() != "" {
+		t.Errorf("deleted = %d, stored = %q; want the dead token removed", calls.googleDeleted, googlephotos.LoadRefreshToken())
+	}
+	if !strings.HasPrefix(out.String(), "login-url google_photos ") {
+		t.Errorf("stdout = %q, want a fresh Google login link", out.String())
+	}
+	if strings.Contains(err.Error()+out.String(), "g0tok-stored-secret") {
+		t.Error("output leaks the token value")
+	}
+}
+
+func TestRejectedGoogleTokenFromEnvLeavesStoredFileAlone(t *testing.T) {
+	stubTerminal(t, false)
+	stubSession(t, nil)
+	calls := stubLogins(t)
+	t.Setenv("CONFIG_FILES_DIR", t.TempDir())
+	if err := googlephotos.SaveRefreshToken("g0tok-good-stored"); err != nil {
+		t.Fatal(err)
+	}
+	orig := newGooglePhotos
+	newGooglePhotos = func(ctx context.Context, cfg googlephotos.Config, dryRun bool, start, end time.Time) (*googlephotos.GooglePhotosStorage, error) {
+		return nil, fmt.Errorf("initialising: %w", googlephotos.ErrTokenRejected)
+	}
+	t.Cleanup(func() { newGooglePhotos = orig })
+
+	cfg := testDownloadConfig(t, "http://unused.test")
+	cfg.GooglePhotos.Enabled = true
+	// The run is using a different token than the stored one, i.e. it came
+	// from the environment or a flag.
+	cfg.GooglePhotos.RefreshToken = "g0tok-dead-from-env"
+
+	var out bytes.Buffer
+	err := Download(context.Background(), cfg, RunOptions{Stdout: &out})
+	if err == nil || errors.Is(err, ErrLoginRequired) || !strings.Contains(err.Error(), "environment variable") {
+		t.Errorf("err = %v, want a plain error naming the env/flag source", err)
+	}
+	if calls.googleDeleted != 0 || googlephotos.LoadRefreshToken() != "g0tok-good-stored" {
+		t.Errorf("deleted = %d, stored = %q; the stored login must be left alone", calls.googleDeleted, googlephotos.LoadRefreshToken())
+	}
+	if calls.googleBegins != 0 || out.Len() != 0 {
+		t.Errorf("a login link was issued (%q) although the stored login was not the problem", out.String())
+	}
+	if strings.Contains(err.Error(), "g0tok") {
+		t.Error("error leaks a token value")
 	}
 }
