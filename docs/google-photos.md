@@ -15,7 +15,7 @@ To prevent redundant uploads and save bandwidth, the tool uses a filename-based 
 
 1.  **Unique Filenames**: Every photo downloaded from MyBrightDay is saved with a filename that includes its unique MyBrightDay Attachment ID (a 24-character hex MongoDB ObjectID).
     *   Example: `daycare_2024-01-15_69f9390f8d9c1412adacc127.jpg`
-2.  **Library Search**: Before processing a date range, the tool queries your Google Photos library for items uploaded by this application within that date range (plus a 2-day buffer for timezone safety).
+2.  **Album Listing**: Before processing, the tool lists the contents of the target album and collects the attachment IDs from the filenames. The album is listed in full rather than searched by date: Google's library-wide search was observed to omit most of this app's own uploads, which made the tool re-upload photos it had already backed up. (Google itself discards byte-identical re-uploads, so that produced wasted bandwidth rather than duplicate photos.)
 3.  **ID Extraction**: It parses the filenames of existing items in your library using a regular expression to extract the Attachment IDs.
 4.  **Skip Existing**: Any photo whose Attachment ID is already found in the library is skipped.
 

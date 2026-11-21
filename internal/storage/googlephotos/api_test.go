@@ -9,7 +9,6 @@ import (
 	"net/http"
 	"strings"
 	"testing"
-	"time"
 )
 
 // rtFunc adapts a function to http.RoundTripper so tests can serve canned
@@ -191,11 +190,8 @@ func TestFindOrCreateAlbum(t *testing.T) {
 	})
 }
 
-func TestListUploadedAttachmentIDs(t *testing.T) {
-	start := time.Date(2024, 1, 10, 0, 0, 0, 0, time.UTC)
-	end := time.Date(2024, 1, 20, 0, 0, 0, 0, time.UTC)
-
-	t.Run("extracts ids and applies date buffer", func(t *testing.T) {
+func TestListAlbumAttachmentIDs(t *testing.T) {
+	t.Run("lists the album, tolerating short and empty pages", func(t *testing.T) {
 		var pages []searchMediaItemsRequest
 		client := stubClient(func(req *http.Request) (int, any) {
 			var body searchMediaItemsRequest
@@ -203,7 +199,8 @@ func TestListUploadedAttachmentIDs(t *testing.T) {
 				t.Errorf("decoding search body: %v", err)
 			}
 			pages = append(pages, body)
-			if len(pages) == 1 {
+			switch len(pages) {
+			case 1:
 				return http.StatusOK, searchMediaItemsResponse{
 					MediaItems: []mediaItemEntry{
 						{ID: "m1", Filename: "daycare_2024-01-15_0123456789abcdef01234567.jpg"},
@@ -211,31 +208,48 @@ func TestListUploadedAttachmentIDs(t *testing.T) {
 					},
 					NextPageToken: "page-2",
 				}
-			}
-			return http.StatusOK, searchMediaItemsResponse{
-				MediaItems: []mediaItemEntry{
-					{ID: "m3", Filename: "daycare_2024-01-16_abcdefabcdefabcdefabcdef.jpg"},
-					{ID: "m4", Filename: "daycare_2024-01-16_short.jpg"},
-					{ID: "m5", Filename: "daycare_2024-01-17_fedcbafedcbafedcbafedcba.mp4"},
-				},
+			case 2:
+				// An empty page with a continuation token must not end the walk.
+				return http.StatusOK, searchMediaItemsResponse{NextPageToken: "page-3"}
+			default:
+				return http.StatusOK, searchMediaItemsResponse{
+					MediaItems: []mediaItemEntry{
+						{ID: "m3", Filename: "daycare_2024-01-16_abcdefabcdefabcdefabcdef.jpg"},
+						{ID: "m4", Filename: "daycare_2024-01-16_short.jpg"},
+						{ID: "m5", Filename: "daycare_2024-01-17_fedcbafedcbafedcbafedcba.mp4"},
+					},
+				}
 			}
 		})
 
-		ids, err := listUploadedAttachmentIDs(context.Background(), client, start, end)
+		ids, err := listAlbumAttachmentIDs(context.Background(), client, "album-1")
 		if err != nil {
-			t.Fatalf("listUploadedAttachmentIDs: %v", err)
+			t.Fatalf("listAlbumAttachmentIDs: %v", err)
 		}
 		if len(ids) != 3 || !ids["0123456789abcdef01234567"] || !ids["abcdefabcdefabcdefabcdef"] || !ids["fedcbafedcbafedcbafedcba"] {
 			t.Errorf("ids = %v", ids)
 		}
-
-		// The query window must be expanded by uploadedIDsDateBuffer days.
-		r := pages[0].Filters.DateFilter.Ranges[0]
-		if r.StartDate.Day != 8 || r.EndDate.Day != 22 {
-			t.Errorf("buffered range = %+v, want days 8..22", r)
+		if len(pages) != 3 {
+			t.Fatalf("pages requested = %d, want 3", len(pages))
 		}
-		if pages[1].PageToken != "page-2" {
-			t.Errorf("second page token = %q, want page-2", pages[1].PageToken)
+		for i, p := range pages {
+			if p.AlbumID != "album-1" {
+				t.Errorf("page %d albumId = %q, want album-1", i+1, p.AlbumID)
+			}
+		}
+		if pages[1].PageToken != "page-2" || pages[2].PageToken != "page-3" {
+			t.Errorf("page tokens = %q, %q", pages[1].PageToken, pages[2].PageToken)
+		}
+	})
+
+	t.Run("no album means nothing uploaded yet", func(t *testing.T) {
+		client := stubClient(func(req *http.Request) (int, any) {
+			t.Error("no request expected without an album")
+			return http.StatusInternalServerError, ""
+		})
+		ids, err := listAlbumAttachmentIDs(context.Background(), client, "")
+		if err != nil || len(ids) != 0 {
+			t.Errorf("ids, err = %v, %v; want empty, nil", ids, err)
 		}
 	})
 
@@ -243,7 +257,7 @@ func TestListUploadedAttachmentIDs(t *testing.T) {
 		client := stubClient(func(req *http.Request) (int, any) {
 			return http.StatusForbidden, "denied"
 		})
-		_, err := listUploadedAttachmentIDs(context.Background(), client, start, end)
+		_, err := listAlbumAttachmentIDs(context.Background(), client, "album-1")
 		if err == nil || !strings.Contains(err.Error(), "status 403") {
 			t.Errorf("err = %v, want status 403", err)
 		}
@@ -253,7 +267,7 @@ func TestListUploadedAttachmentIDs(t *testing.T) {
 		client := stubClient(func(req *http.Request) (int, any) {
 			return http.StatusOK, "{broken"
 		})
-		_, err := listUploadedAttachmentIDs(context.Background(), client, start, end)
+		_, err := listAlbumAttachmentIDs(context.Background(), client, "album-1")
 		if err == nil || !strings.Contains(err.Error(), "parsing search response") {
 			t.Errorf("err = %v, want parsing search response", err)
 		}

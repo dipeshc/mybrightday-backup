@@ -101,7 +101,7 @@ func Download(ctx context.Context, cfg *Config, opts RunOptions) error {
 		stdout = os.Stdout
 	}
 
-	startDate, endDate, startTime, endTime, err := parseDates(cfg.Date)
+	startDate, endDate, _, _, err := parseDates(cfg.Date)
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func Download(ctx context.Context, cfg *Config, opts RunOptions) error {
 		stores = append(stores, ls)
 	}
 	if cfg.GooglePhotos.Enabled {
-		gp, err := newGooglePhotos(ctx, cfg.GooglePhotos, cfg.DryRun, startTime, endTime)
+		gp, err := newGooglePhotos(ctx, cfg.GooglePhotos, cfg.DryRun)
 		if googlephotos.IsTokenRejected(err) {
 			return googleTokenRejected(ctx, cfg, stdout)
 		}

@@ -726,7 +726,7 @@ func TestRejectedGoogleTokenIsClearedAndLinkIssued(t *testing.T) {
 		t.Fatal(err)
 	}
 	orig := newGooglePhotos
-	newGooglePhotos = func(ctx context.Context, cfg googlephotos.Config, dryRun bool, start, end time.Time) (*googlephotos.GooglePhotosStorage, error) {
+	newGooglePhotos = func(ctx context.Context, cfg googlephotos.Config, dryRun bool) (*googlephotos.GooglePhotosStorage, error) {
 		return nil, fmt.Errorf("initialising: %w", googlephotos.ErrTokenRejected)
 	}
 	t.Cleanup(func() { newGooglePhotos = orig })
@@ -760,7 +760,7 @@ func TestRejectedGoogleTokenFromEnvLeavesStoredFileAlone(t *testing.T) {
 		t.Fatal(err)
 	}
 	orig := newGooglePhotos
-	newGooglePhotos = func(ctx context.Context, cfg googlephotos.Config, dryRun bool, start, end time.Time) (*googlephotos.GooglePhotosStorage, error) {
+	newGooglePhotos = func(ctx context.Context, cfg googlephotos.Config, dryRun bool) (*googlephotos.GooglePhotosStorage, error) {
 		return nil, fmt.Errorf("initialising: %w", googlephotos.ErrTokenRejected)
 	}
 	t.Cleanup(func() { newGooglePhotos = orig })

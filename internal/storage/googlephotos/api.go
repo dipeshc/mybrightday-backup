@@ -10,7 +10,6 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
-	"time"
 )
 
 const (
@@ -19,11 +18,6 @@ const (
 	photosAlbumsURL     = "https://photoslibrary.googleapis.com/v1/albums"
 	photosSearchURL     = "https://photoslibrary.googleapis.com/v1/mediaItems:search"
 )
-
-// uploadedIDsDateBuffer is the number of days added to each side of the sync date range
-// when querying Google Photos for deduplication, guarding against timezone-edge photos
-// and minor date-metadata drift.
-const uploadedIDsDateBuffer = 2
 
 // attachmentIDFromFilenameRe extracts a MongoDB ObjectId from filenames like
 // daycare_2024-01-15_69f9390f8d9c1412adacc127.jpg (photos) or .mp4/.mov (videos).
@@ -93,36 +87,13 @@ type createAlbumBody struct {
 	Title string `json:"title"`
 }
 
-// googleDate is a calendar date for the Google Photos date filter.
-type googleDate struct {
-	Year  int `json:"year"`
-	Month int `json:"month"`
-	Day   int `json:"day"`
-}
-
-// googleDateRange is an inclusive date range for the Google Photos date filter.
-type googleDateRange struct {
-	StartDate googleDate `json:"startDate"`
-	EndDate   googleDate `json:"endDate"`
-}
-
-// googleDateFilter selects media items whose capture date falls within any of the given ranges.
-type googleDateFilter struct {
-	Ranges []googleDateRange `json:"ranges"`
-}
-
-// googleFilters is the top-level filters object for mediaItems:search.
-type googleFilters struct {
-	DateFilter googleDateFilter `json:"dateFilter"`
-}
-
 // searchMediaItemsRequest is the request body for searching media items in the library.
 // albumId and filters are mutually exclusive in the Google Photos API, so this struct
 // uses filters for date-range scoped deduplication checks.
 type searchMediaItemsRequest struct {
-	PageSize  int           `json:"pageSize"`
-	PageToken string        `json:"pageToken,omitempty"`
-	Filters   googleFilters `json:"filters"`
+	AlbumID   string `json:"albumId"`
+	PageSize  int    `json:"pageSize"`
+	PageToken string `json:"pageToken,omitempty"`
 }
 
 // searchMediaItemsResponse is the response from the media items search endpoint.
@@ -248,37 +219,32 @@ func createAlbum(ctx context.Context, client *http.Client, title string) (string
 	return album.ID, nil
 }
 
-// listUploadedAttachmentIDs paginates through library media items within a buffered date
-// range and extracts attachment IDs from filenames matching the daycare_*_<24hexID>.jpg
-// pattern. The query window is expanded by uploadedIDsDateBuffer days on each side to
-// account for timezone-edge photos and minor date-metadata drift.
+// listAlbumAttachmentIDs lists every item in the album and extracts the
+// attachment IDs from filenames matching the daycare_*_<24hexID>.<ext>
+// pattern.
 //
-// The photoslibrary.readonly.appcreateddata OAuth scope ensures only items uploaded by
-// this app are returned, so searching the library (rather than a specific album) is safe
-// and also catches duplicates across albums.
-func listUploadedAttachmentIDs(ctx context.Context, client *http.Client, startDate, endDate time.Time) (map[string]bool, error) {
-	buffered := startDate.AddDate(0, 0, -uploadedIDsDateBuffer)
-	bufferedEnd := endDate.AddDate(0, 0, uploadedIDsDateBuffer)
-
-	filter := googleFilters{
-		DateFilter: googleDateFilter{
-			Ranges: []googleDateRange{
-				{
-					StartDate: googleDate{Year: buffered.Year(), Month: int(buffered.Month()), Day: buffered.Day()},
-					EndDate:   googleDate{Year: bufferedEnd.Year(), Month: int(bufferedEnd.Month()), Day: bufferedEnd.Day()},
-				},
-			},
-		},
-	}
-
+// The album is listed in full rather than searching the library by date: a
+// library-wide mediaItems:search (even with the app-created-data scope) was
+// observed to omit most of this app's own uploads, which made the tool
+// re-upload photos every run, whereas an album-scoped listing returns every
+// item the app put there. Google forbids combining albumId with filters, so
+// no date window is applied; the album grows by a few items a day and lists
+// in well under a minute.
+//
+// Pages can come back short or empty while a next-page token is still set,
+// so the loop runs until the token is absent, not until a page is empty.
+func listAlbumAttachmentIDs(ctx context.Context, client *http.Client, albumID string) (map[string]bool, error) {
 	ids := make(map[string]bool)
+	if albumID == "" {
+		return ids, nil
+	}
 	pageToken := ""
 
 	for {
 		searchReq := searchMediaItemsRequest{
+			AlbumID:   albumID,
 			PageSize:  100,
 			PageToken: pageToken,
-			Filters:   filter,
 		}
 
 		jsonData, err := json.Marshal(searchReq)

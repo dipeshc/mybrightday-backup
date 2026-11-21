@@ -112,17 +112,15 @@ func TestSaveUploadError(t *testing.T) {
 }
 
 func TestNewErrorPaths(t *testing.T) {
-	now := time.Now()
-
 	t.Run("missing refresh token", func(t *testing.T) {
-		_, err := New(context.Background(), Config{}, false, now, now)
+		_, err := New(context.Background(), Config{}, false)
 		if err == nil || !strings.Contains(err.Error(), "refresh_token missing") {
 			t.Errorf("err = %v, want refresh_token missing", err)
 		}
 	})
 
 	t.Run("invalid client secret", func(t *testing.T) {
-		_, err := New(context.Background(), Config{ClientSecret: "{not json"}, false, now, now)
+		_, err := New(context.Background(), Config{ClientSecret: "{not json"}, false)
 		if err == nil || !strings.Contains(err.Error(), "parsing client secret") {
 			t.Errorf("err = %v, want parsing client secret", err)
 		}

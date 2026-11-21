@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"time"
 
 	"github.com/dipeshc/mybrightday-backup/internal/storage"
 )
@@ -23,7 +22,7 @@ type GooglePhotosStorage struct {
 
 // New creates a fully initialised GooglePhotosStorage for the given date range.
 // In dry-run mode the album is looked up but not created.
-func New(ctx context.Context, cfg Config, dryRun bool, startDate, endDate time.Time) (*GooglePhotosStorage, error) {
+func New(ctx context.Context, cfg Config, dryRun bool) (*GooglePhotosStorage, error) {
 	client, err := getOAuthClient(ctx, cfg)
 	if err != nil {
 		return nil, err
@@ -48,7 +47,7 @@ func New(ctx context.Context, cfg Config, dryRun bool, startDate, endDate time.T
 		slog.Debug("Using album", "name", cfg.AlbumName, "id", albumID)
 	}
 
-	uploadedIDs, err := listUploadedAttachmentIDs(ctx, client, startDate, endDate)
+	uploadedIDs, err := listAlbumAttachmentIDs(ctx, client, albumID)
 	if err != nil {
 		return nil, fmt.Errorf("listing uploaded photos: %w", err)
 	}
